@@ -28,10 +28,14 @@
 
 ```python
 ALL_PERIODS = ["1m", "5m", "10m", "15m", "30m", "60m", "1d", "1w", "1M", "1Q", "1Y"]
-MINUTE_PERIODS = {"1m", "5m", "10m", "15m", "30m", "60m"}
-BACKFILL_ORDER = ["1d", "1w", "1M", "1Q", "1Y", "60m", "30m", "15m", "10m", "5m", "1m"]  # 先粗后细
-MAX_PAGE = 10000  # 接口单次单标的 K 线上限
+MINUTE_PERIODS = {"1m", "5m", "15m", "30m", "60m"}  # 套餐不含 10m；10m 需要时由 5m 聚合
+BACKFILL_ORDER = ["1d", "1w", "1M", "1Q", "1Y", "60m", "30m", "15m", "5m", "1m"]  # 先粗后细
+MAX_PAGE = 5000  # 分钟接口单次上限 5000 条（日线文档上限 10000，统一取保守值）
+MINUTE_HISTORY_DAYS = 365   # 套餐硬限制：分钟线仅最近 365 天
+DAILY_HISTORY_DAYS = 3 * 365
 ```
+
+**套餐限流（已实测+确认，据此设定 client 默认速率）**：日线按只 120 次/分、批量 60 次/分 ×200 标的；分钟按只 60 次/分、批量 30 次/分 ×100 标的；单次上限 5000 条；分钟线仅最近 365 天。**非法 symbol 不抛异常、返回空 DataFrame**；SDK 异常类在 `tickflow._exceptions`（RateLimitError/APIError/PermissionError/ConnectionError/TimeoutError 等，注意遮蔽内置同名类，导入需模块前缀）。**回填必须用批量接口**：分钟线逐只分页需 ~28 小时，批量按时间窗只需 ~35 分钟。
 
 **目录结构**：
 
@@ -432,14 +436,14 @@ def test_client_error_not_retried(fake_tf):
 
 
 def test_pagination_accumulates_until_short_page(fake_tf):
-    # 第一页满 MAX_PAGE -> 继续；第二页不足 -> 停止
-    page1 = make_kline_df("600000.SH", 0, 10000, 60_000)
-    page2 = make_kline_df("600000.SH", 10000 * 60_000, 50, 60_000)
+    # 第一页满 MAX_PAGE(5000) -> 继续；第二页不足 -> 停止
+    page1 = make_kline_df("600000.SH", 0, 5000, 60_000)
+    page2 = make_kline_df("600000.SH", 5000 * 60_000, 50, 60_000)
     fake_tf.klines.queue(page1)
     fake_tf.klines.queue(page2)
     client = make_client(fake_tf)
     out = client.get_klines_range("600000.SH", "1m", 0, 10**13)
-    assert len(out) == 10050
+    assert len(out) == 5050
     assert len(fake_tf.klines.calls) == 2
     # 第二页的 start_time 接续第一页最大时间戳
     assert fake_tf.klines.calls[1]["start_time"] == page1["timestamp"].max() + 1
@@ -483,7 +487,19 @@ KLINE_COLUMNS = ["symbol", "timestamp", "open", "high", "low", "close", "volume"
 
 
 def classify_error(exc: Exception) -> str:
-    """按 Task 1 探测到的真实异常结构调整。返回 rate_limit / client / server。"""
+    """返回 rate_limit / client / server。优先按 SDK 异常类判断（实测确认），字符串兜底。
+    注意 SDK 的 PermissionError/ConnectionError/TimeoutError 遮蔽内置同名类，必须模块前缀导入。"""
+    try:
+        from tickflow import _exceptions as tfe
+        if isinstance(exc, tfe.RateLimitError):
+            return "rate_limit"
+        if isinstance(exc, (tfe.BadRequestError, tfe.NotFoundError, tfe.PermissionError,
+                            tfe.AuthenticationError)):
+            return "client"
+        if isinstance(exc, (tfe.InternalServerError, tfe.ConnectionError, tfe.TimeoutError)):
+            return "server"
+    except ImportError:
+        pass
     msg = str(exc).lower()
     if "429" in msg or "rate limit" in msg or "too many" in msg:
         return "rate_limit"
@@ -555,9 +571,76 @@ class TickFlowClient:
     def list_universe_symbols(self, universe_id: str) -> list[str]:
         uni = self._call(self._tf.universes.get, universe_id)
         return list(uni["symbols"] if isinstance(uni, dict) else uni)
+
+    def get_klines_batch_range(self, symbols: list[str], period: str,
+                               start_ms: int, end_ms: int) -> pd.DataFrame:
+        """批量拉取（回填主力路径）。底层 tf.klines.batch 一次最多 100/200 标的、
+        每标的最多 MAX_PAGE 条；满页的标的从各自 last_ts+1 续拉，直到全部不足页。
+        返回合并后的标准列 DataFrame。"""
+        frames: list[pd.DataFrame] = []
+        pending = {s: start_ms for s in symbols}
+        while pending:
+            by_cursor: dict[int, list[str]] = {}
+            for s, c in pending.items():
+                by_cursor.setdefault(c, []).append(s)
+            pending = {}
+            for cursor, group in by_cursor.items():
+                res = self._call(self._tf.klines.batch, group, period=period,
+                                 count=MAX_PAGE, start_time=cursor, end_time=end_ms,
+                                 adjust="none", as_dataframe=True)
+                res = res or {}
+                for sym in group:
+                    df = res.get(sym)
+                    if df is None or df.empty:
+                        continue
+                    df = df.copy()
+                    df["symbol"] = sym
+                    frames.append(df)
+                    last_ts = int(df["timestamp"].max())
+                    if len(df) >= MAX_PAGE and last_ts < end_ms:
+                        pending[sym] = last_ts + 1
+        if not frames:
+            return empty_klines()
+        out = pd.concat(frames, ignore_index=True)
+        out = out.drop_duplicates(subset=["symbol", "timestamp"]).sort_values(
+            ["symbol", "timestamp"])
+        for col in KLINE_COLUMNS:
+            if col not in out.columns:
+                out[col] = pd.NA
+        return out[KLINE_COLUMNS].reset_index(drop=True)
 ```
 
-注意：若 Task 1 探测发现 SDK 异常是自定义类（如 `tickflow.exceptions.RateLimitError`），把 `classify_error` 改为优先 `isinstance` 判断、字符串匹配兜底。
+批量方法的行为以实测为准：Step 3.5 先跑一次真实 `klines.batch` 探测（2 只标的、1d、count=5），确认返回结构（dict[symbol, DataFrame]）、count 是否按标的计、满页判定方式，记进 `docs/sdk-notes.md`；若实际形态不同（如返回单个合并 DataFrame），相应调整本方法与测试。
+
+FakeKlines 需加 `batch(symbols, period, count, start_time, end_time, adjust, as_dataframe)`：内部有独立 `batch_script` 队列（每项：`dict[symbol, DataFrame]` 或 Exception），记录 `batch_calls`。
+
+追加批量测试：
+
+```python
+def test_batch_range_continues_full_pages(fake_tf):
+    df_full = make_kline_df("a.SH", 0, 5000, 60_000)     # a.SH 满页需续拉
+    df_full2 = make_kline_df("a.SH", 5000 * 60_000, 10, 60_000)
+    df_short = make_kline_df("b.SH", 0, 100, 60_000)     # b.SH 一页拉完
+    fake_tf.klines.batch_script = [{"a.SH": df_full, "b.SH": df_short},
+                                   {"a.SH": df_full2}]
+    client = make_client(fake_tf)
+    out = client.get_klines_batch_range(["a.SH", "b.SH"], "1m", 0, 10**13)
+    assert len(out) == 5000 + 10 + 100
+    assert len(fake_tf.klines.batch_calls) == 2
+    # 第二轮只续拉 a.SH，且 start_time 接续
+    second = fake_tf.klines.batch_calls[1]
+    assert second["symbols"] == ["a.SH"]
+    assert second["start_time"] == df_full["timestamp"].max() + 1
+
+
+def test_batch_range_empty(fake_tf):
+    fake_tf.klines.batch_script = [{}]
+    client = make_client(fake_tf)
+    out = client.get_klines_batch_range(["a.SH"], "1d", 0, 10**9)
+    assert out.empty
+```
+
+注意：`classify_error` 已按 Task 1 实测的 SDK 异常类（`tickflow._exceptions.*`）做 isinstance 判断；字符串匹配仅作兜底。**另注意：非法 symbol 不抛异常、返回空 DataFrame**——无需特殊处理，`get_klines_range` 对空 df 的现有分支天然覆盖。
 
 - [ ] **Step 4: 运行确认通过**
 
@@ -1251,13 +1334,13 @@ git commit -m "feat: DataCenter facade end-to-end"
 
 ---
 
-### Task 9: BackfillJob（并发回填 + 断点续传）
+### Task 9: BackfillJob（批量回填 + 断点续传）
 
 **Files:**
 - Create: `src/datacenter/jobs/backfill.py`
 - Test: `tests/test_backfill.py`
 
-机制：按 `BACKFILL_ORDER` 逐周期处理；每周期内取 `pending_symbols`（跳过已完成 = 断点续传）；按批（batch_size）并发回源（ThreadPoolExecutor，客户端令牌桶天然限速）；每批合并成一个 DataFrame 按分区落盘，逐 symbol 标记 coverage + done。单 symbol 失败不拖垮整批：记录失败列表，最后汇总。
+机制：按 `BACKFILL_ORDER` 逐周期处理；每周期内取 `pending_symbols`（跳过已完成 = 断点续传）；按批（日线 200 标的/批、分钟 100 标的/批，对齐套餐限制）调 `client.get_klines_batch_range`；每批结果按分区落盘，逐 symbol 标记 coverage + done。**整批失败则整批标记 failed**（批量请求是原子调用，无法区分单只失败；重跑整批成本可接受）。批量接口下并发无意义（限流是瓶颈），回填为顺序循环。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -1275,19 +1358,20 @@ T0, DAY = 1754011800000, 86_400_000
 
 
 def make_dc(tmp_path, fake):
-    # max_retries=0：失败隔离测试依赖"异常立即抛出"，默认 3 次重试会消耗后续队列元素
-    # （真实 sleep 退避也会拖慢测试）。api.py 的 max_retries 透传参数在本任务加入。
+    # max_retries=0：失败测试依赖"异常立即抛出"，默认重试会消耗后续队列元素
     return DataCenter(data_dir=tmp_path / "data", client_tf=fake, rate_per_sec=10_000,
                       max_retries=0)
 
 
 def test_backfill_fetches_all_pending_symbols(tmp_path):
     fake = FakeTickFlow(symbols=["a.SH", "b.SH", "c.SH"])
-    for s in ["a.SH", "b.SH", "c.SH"]:
-        fake.klines.queue(make_kline_df(s, T0, 3, DAY))
+    fake.klines.batch_script = [
+        {s: make_kline_df(s, T0, 3, DAY) for s in ["a.SH", "b.SH"]},
+        {"c.SH": make_kline_df("c.SH", T0, 3, DAY)},
+    ]
     dc = make_dc(tmp_path, fake)
     report = backfill(dc, periods=["1d"], start_ms=T0, end_ms=T0 + 3 * DAY,
-                      batch_size=2, workers=2)
+                      batch_size=2)
     assert sorted(report["done"]) == ["a.SH", "b.SH", "c.SH"]
     assert report["failed"] == {}
     assert dc.meta.pending_symbols(["a.SH", "b.SH", "c.SH"], "1d") == []
@@ -1300,24 +1384,33 @@ def test_backfill_resume_skips_done(tmp_path):
     dc = make_dc(tmp_path, fake)
     dc.list_symbols()
     dc.meta.mark_done("a.SH", "1d")  # 模拟上次已完成
-    fake.klines.queue(make_kline_df("b.SH", T0, 3, DAY))
+    fake.klines.batch_script = [{"b.SH": make_kline_df("b.SH", T0, 3, DAY)}]
     report = backfill(dc, periods=["1d"], start_ms=T0, end_ms=T0 + 3 * DAY)
     assert report["done"] == ["b.SH"]
-    assert all(c["symbol"] == "b.SH" for c in fake.klines.calls)
+    assert fake.klines.batch_calls[0]["symbols"] == ["b.SH"]
 
 
-def test_backfill_failure_isolated_and_reported(tmp_path):
+def test_backfill_batch_failure_marks_whole_batch(tmp_path):
     fake = FakeTickFlow(symbols=["a.SH", "b.SH"])
-    fake.klines.queue(Exception("boom"))
-    fake.klines.queue(make_kline_df("b.SH", T0, 3, DAY))
+    fake.klines.batch_script = [Exception("boom")]
     dc = make_dc(tmp_path, fake)
-    report = backfill(dc, periods=["1d"], start_ms=T0, end_ms=T0 + 3 * DAY, workers=1)
-    assert report["done"] == ["b.SH"]
-    assert "a.SH" in report["failed"]
-    assert dc.meta.pending_symbols(["a.SH", "b.SH"], "1d") == ["a.SH"]  # 失败的可重跑
+    report = backfill(dc, periods=["1d"], start_ms=T0, end_ms=T0 + 3 * DAY)
+    assert report["done"] == []
+    assert set(report["failed"]) == {"a.SH", "b.SH"}
+    assert dc.meta.pending_symbols(["a.SH", "b.SH"], "1d") == ["a.SH", "b.SH"]
+
+
+def test_backfill_empty_batch_result_still_marks_done(tmp_path):
+    """批量返回空（如全部未上市期间）也必须标记 done + coverage，防止反复打空。"""
+    fake = FakeTickFlow(symbols=["a.SH"])
+    fake.klines.batch_script = [{}]
+    dc = make_dc(tmp_path, fake)
+    report = backfill(dc, periods=["1d"], start_ms=T0, end_ms=T0 + 3 * DAY)
+    assert report["done"] == ["a.SH"]
+    assert dc.meta.get_coverage("a.SH", "1d") == (T0, T0 + 3 * DAY)
 ```
 
-注意：失败重试由 TickFlowClient 承担（`max_retries`），FakeTickFlow 的 script 队列意味着 "boom" 会被重试消耗——测试里 `make_dc` 的 client 用 `max_retries=0`。给 `DataCenter` 加透传参数 `max_retries: int = 3` 传到 TickFlowClient（api.py 小改，属于本任务范围）。
+给 `DataCenter` 加透传参数 `max_retries: int = 3` 传到 TickFlowClient（api.py 小改，属于本任务范围）。
 
 - [ ] **Step 2: 运行确认失败**
 
@@ -1332,62 +1425,58 @@ Expected: FAIL（ModuleNotFoundError / TypeError）
 
 ```python
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
-import pandas as pd
+import time
 
 from datacenter.api import DataCenter
-from datacenter.constants import BACKFILL_ORDER
+from datacenter.constants import (BACKFILL_ORDER, DAILY_HISTORY_DAYS,
+                                  MINUTE_HISTORY_DAYS, MINUTE_PERIODS)
 
 log = logging.getLogger(__name__)
 
 
 def backfill(dc: DataCenter, periods: list[str] | None = None,
              start_ms: int | None = None, end_ms: int | None = None,
-             batch_size: int = 50, workers: int = 8) -> dict:
-    """全市场历史回填。断点续传：已标记 done 的 (symbol, period) 跳过。"""
-    import time
+             batch_size: int | None = None) -> dict:
+    """全市场历史回填。断点续传：已标记 done 的 (symbol, period) 跳过。
+
+    分钟周期默认只拉最近 365 天（套餐硬限制），日线级默认 3 年。
+    batch_size 默认按周期取套餐上限（分钟 100 / 日线 200）。
+    """
     end_ms = end_ms if end_ms is not None else int(time.time() * 1000)
-    start_ms = start_ms if start_ms is not None else end_ms - 3 * 365 * 86_400_000
     symbols = dc.list_symbols()
     report = {"done": [], "failed": {}}
 
     for period in (periods or BACKFILL_ORDER):
+        default_days = MINUTE_HISTORY_DAYS if period in MINUTE_PERIODS else DAILY_HISTORY_DAYS
+        p_start = start_ms if start_ms is not None else end_ms - default_days * 86_400_000
+        size = batch_size or (100 if period in MINUTE_PERIODS else 200)
         todo = dc.meta.pending_symbols(symbols, period)
         log.info("period=%s pending=%d", period, len(todo))
-        for i in range(0, len(todo), batch_size):
-            batch = todo[i:i + batch_size]
-            frames = []
-            with ThreadPoolExecutor(max_workers=workers) as pool:
-                futs = {pool.submit(dc.client.get_klines_range, s, period, start_ms, end_ms): s
-                        for s in batch}
-                for fut in as_completed(futs):
-                    sym = futs[fut]
-                    try:
-                        df = fut.result()
-                        if not df.empty:
-                            frames.append(df)
-                        # 空数据同样是"已解析"，标记覆盖防打空
-                        dc.meta.extend_coverage(sym, period, start_ms, end_ms)
-                        dc.meta.mark_done(sym, period)
-                        report["done"].append(sym)
-                    except Exception as exc:
-                        report["failed"][sym] = str(exc)
-                        log.warning("backfill failed: %s %s: %s", sym, period, exc)
-            if frames:
-                dc.klines.write(pd.concat(frames, ignore_index=True), period, tag="backfill")
+        for i in range(0, len(todo), size):
+            batch = todo[i:i + size]
+            try:
+                df = dc.client.get_klines_batch_range(batch, period, p_start, end_ms)
+            except Exception as exc:
+                for s in batch:
+                    report["failed"][s] = str(exc)
+                log.warning("batch failed: period=%s [%d:%d]: %s", period, i, i + size, exc)
+                continue
+            dc.klines.write(df, period, tag="backfill")
+            for s in batch:
+                # 空数据同样是"已解析"，标记覆盖防打空
+                dc.meta.extend_coverage(s, period, p_start, end_ms)
+                dc.meta.mark_done(s, period)
+                report["done"].append(s)
             log.info("period=%s batch %d-%d done", period, i, i + len(batch))
     return report
 ```
 
-注意：resolver 与 backfill 共用 client（令牌桶在 client 内，全局限速生效）；写入在消费端单线程进行，满足单写者纪律。
-
-**已知优化项（本期不做，记录在案）**：日线等粗周期可用 SDK 的 `klines.batch` 批量接口大幅减少请求数（当前逐 symbol 分页对分钟线是必需的，对日线约多用 N 倍请求）。待全量回填实测耗时后再决定是否优化。
+注意：resolver 与 backfill 共用 client（令牌桶在 client 内，全局限速生效）；写入在回填主线程单点进行，满足单写者纪律。**回填前把 client 速率调到对应套餐档位**（分钟批量 30 次/分 = 0.5/s；日线批量 60 次/分 = 1/s），由 CLI 的 `--rate` 传入。
 
 - [ ] **Step 4: 运行确认通过**
 
 Run: `uv run pytest tests/test_backfill.py -v`
-Expected: 3 passed
+Expected: 4 passed
 
 - [ ] **Step 5: 全量回归 + Commit**
 
@@ -1396,7 +1485,7 @@ Expected: 全部 passed
 
 ```bash
 git add src/datacenter/jobs/backfill.py src/datacenter/api.py tests/test_backfill.py
-git commit -m "feat: resumable concurrent backfill job"
+git commit -m "feat: resumable batch backfill job"
 ```
 
 ---
@@ -1432,16 +1521,17 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--periods", type=str, default=None, help="逗号分隔，默认全部（先粗后细）")
-    p.add_argument("--rate", type=float, default=10.0, help="每秒请求上限")
-    p.add_argument("--workers", type=int, default=8)
-    p.add_argument("--batch-size", type=int, default=50)
+    p.add_argument("--rate", type=float, default=1.0,
+                   help="每秒请求上限（日线批量 60次/分=1.0，分钟批量 30次/分=0.5）")
+    p.add_argument("--batch-size", type=int, default=None,
+                   help="默认按周期取套餐上限（日线 200 / 分钟 100）")
     p.add_argument("--data-dir", type=str, default="data")
     args = p.parse_args()
 
     dc = DataCenter(data_dir=args.data_dir, rate_per_sec=args.rate)
     periods = args.periods.split(",") if args.periods else None
     t0 = time.time()
-    report = backfill(dc, periods=periods, workers=args.workers, batch_size=args.batch_size)
+    report = backfill(dc, periods=periods, batch_size=args.batch_size)
     print(f"\n耗时 {time.time() - t0:.0f}s | 完成 {len(report['done'])} 个 symbol×period"
           f" | 失败 {len(report['failed'])} 个")
     if report["failed"]:
@@ -1455,10 +1545,10 @@ if __name__ == "__main__":
 - [ ] **Step 2: 真实回源 smoke（小规模）**
 
 ```bash
-uv run python scripts/backfill.py --periods 1d --batch-size 20 --rate 10
+uv run python scripts/backfill.py --periods 1d --rate 1.0
 ```
 
-预期：拉全市场 3 年日线（约 5000 symbol，几分钟内完成），`data/klines/period=1d/` 出现按年分区文件，`data/meta.db` 存在。
+预期：批量拉全市场 3 年日线（5555 只 × 28 批 ≈ 28 次请求，1 分钟内完成），`data/klines/period=1d/` 出现按年分区文件，`data/meta.db` 存在。
 
 随后验证读取（REPL 或临时脚本）：
 
@@ -1485,10 +1575,10 @@ git commit -m "feat: backfill CLI + README; verified with live daily-bar smoke"
 - [ ] **Step 5: （可选）启动全量回填**
 
 ```bash
-uv run python scripts/backfill.py --rate 10 --workers 8
+uv run python scripts/backfill.py --rate 0.5   # 分钟批量档；日线部分会偏慢但安全
 ```
 
-预计 2~3 小时（分钟线占大头）。可后台运行，中断后重跑即续传。
+预计：日线级 5 个周期几分钟；分钟级 5 个周期 × 365 天约 30~60 分钟（批量 30 次/分 × 100 标的，1m 线每标的 365 天约 8.8 万条需 ~18 页，时间窗续拉自动处理）。中断后重跑即续传。
 
 ---
 
