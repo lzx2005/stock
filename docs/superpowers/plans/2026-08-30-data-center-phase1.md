@@ -78,7 +78,7 @@ stock/
 - Create: `src/datacenter/__init__.py`（空）
 - Create: `scripts/probe_sdk.py`
 
-- [ ] **Step 1: 初始化 git 与项目骨架**
+- [x] **Step 1: 初始化 git 与项目骨架**
 
 ```bash
 cd <项目根目录>
@@ -89,7 +89,7 @@ mkdir -p src/datacenter/client src/datacenter/store src/datacenter/jobs tests sc
 touch src/datacenter/__init__.py src/datacenter/client/__init__.py src/datacenter/store/__init__.py src/datacenter/jobs/__init__.py tests/__init__.py
 ```
 
-- [ ] **Step 2: 写 pyproject.toml**
+- [x] **Step 2: 写 pyproject.toml**
 
 ```toml
 [project]
@@ -120,7 +120,7 @@ addopts = "-q --timeout=60"
 
 Run: `uv sync` — 预期成功创建 `.venv` 并安装依赖。
 
-- [ ] **Step 3: 写 SDK 探测脚本**
+- [x] **Step 3: 写 SDK 探测脚本**
 
 `scripts/probe_sdk.py`：
 
@@ -174,13 +174,13 @@ for i in range(30):
 print(f"完成, 异常数={errs}（0 说明 30 次连发未触限）")
 ```
 
-- [ ] **Step 4: 运行探测并记录结果**
+- [x] **Step 4: 运行探测并记录结果**
 
 Run: `uv run python scripts/probe_sdk.py`
 
 记录到 `docs/sdk-notes.md`：K线返回的真实列名与 dtype、异常类层次（Task 3 的 `classify_error` 据此调整）、标的池大小、限流迹象。**若 `klines.get` 的参数名或返回结构与脚本假设不符，修正脚本重跑，并更新后续任务中的调用签名。**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pyproject.toml uv.lock src/ scripts/ docs/sdk-notes.md
@@ -197,7 +197,7 @@ git commit -m "chore: project skeleton + SDK probe notes"
 - Create: `src/datacenter/client/ratelimit.py`
 - Test: `tests/test_ratelimit.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `tests/test_ratelimit.py`：
 
@@ -244,12 +244,12 @@ def test_tokens_refill_over_time():
     assert clock.slept == []
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `uv run pytest tests/test_ratelimit.py -v`
 Expected: FAIL（`ModuleNotFoundError: datacenter.client.ratelimit`）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `src/datacenter/exceptions.py`：
 
@@ -304,12 +304,12 @@ class TokenBucket:
             self._sleep(wait)
 ```
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `uv run pytest tests/test_ratelimit.py -v`
 Expected: 3 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/datacenter/exceptions.py src/datacenter/constants.py src/datacenter/client/ratelimit.py tests/test_ratelimit.py
@@ -325,7 +325,7 @@ git commit -m "feat: exception hierarchy + thread-safe token bucket"
 - Test: `tests/test_tickflow_client.py`
 - Test: `tests/conftest.py`
 
-- [ ] **Step 1: 写 conftest 与失败测试**
+- [x] **Step 1: 写 conftest 与失败测试**
 
 `tests/conftest.py`：
 
@@ -463,12 +463,12 @@ def test_list_universe_symbols(fake_tf):
     assert client.list_universe_symbols("CN_Equity_A") == ["600000.SH", "000001.SZ"]
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `uv run pytest tests/test_tickflow_client.py -v`
 Expected: FAIL（ModuleNotFoundError）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `src/datacenter/client/tickflow_client.py`：
 
@@ -642,12 +642,12 @@ def test_batch_range_empty(fake_tf):
 
 注意：`classify_error` 已按 Task 1 实测的 SDK 异常类（`tickflow._exceptions.*`）做 isinstance 判断；字符串匹配仅作兜底。**另注意：非法 symbol 不抛异常、返回空 DataFrame**——无需特殊处理，`get_klines_range` 对空 df 的现有分支天然覆盖。
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `uv run pytest tests/test_tickflow_client.py -v`
 Expected: 6 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/datacenter/client/tickflow_client.py tests/conftest.py tests/test_tickflow_client.py
@@ -662,7 +662,7 @@ git commit -m "feat: TickFlowClient with rate limit, retry, kline pagination"
 - Create: `src/datacenter/store/meta.py`
 - Test: `tests/test_meta.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `tests/test_meta.py`：
 
@@ -713,12 +713,12 @@ def test_instruments_upsert_and_count(meta):
     assert meta.all_symbols() == ["000001.SZ", "600000.SH", "600519.SH"]
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `uv run pytest tests/test_meta.py -v`
 Expected: FAIL（ModuleNotFoundError）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `src/datacenter/store/meta.py`：
 
@@ -817,12 +817,12 @@ class MetaStore:
         return [r[0] for r in self._conn.execute("SELECT symbol FROM instruments ORDER BY symbol")]
 ```
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `uv run pytest tests/test_meta.py -v`
 Expected: 5 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/datacenter/store/meta.py tests/test_meta.py
@@ -837,7 +837,7 @@ git commit -m "feat: MetaStore with coverage, sync jobs, instruments"
 - Create: `src/datacenter/store/klines.py`
 - Test: `tests/test_kline_store.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `tests/test_kline_store.py`：
 
@@ -893,12 +893,12 @@ def test_no_tmp_files_left(store, tmp_path):
     assert tmps == []
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `uv run pytest tests/test_kline_store.py -v`
 Expected: FAIL（ModuleNotFoundError）
 
-- [ ] **Step 3: 实现（写入部分）**
+- [x] **Step 3: 实现（写入部分）**
 
 `src/datacenter/store/klines.py`：
 
@@ -945,12 +945,12 @@ class KlineStore:
         return written
 ```
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `uv run pytest tests/test_kline_store.py -v`
 Expected: 5 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/datacenter/store/klines.py tests/test_kline_store.py
@@ -967,7 +967,7 @@ git commit -m "feat: KlineStore partitioned parquet writes with atomic rename"
 
 读取语义：同一 `(symbol, timestamp)` 可能被重复写入（回填重跑、日终覆盖），**后写胜出**——靠文件名时间戳 `ORDER BY filename DESC` 实现。
 
-- [ ] **Step 1: 追加失败测试**
+- [x] **Step 1: 追加失败测试**
 
 `tests/test_kline_store.py` 追加：
 
@@ -1012,12 +1012,12 @@ def test_read_is_readonly_and_repeatable(store):
     pd.testing.assert_frame_equal(out1, out2)
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `uv run pytest tests/test_kline_store.py -v`
 Expected: 新测试 FAIL（`AttributeError: 'KlineStore' object has no attribute 'read'`）
 
-- [ ] **Step 3: 实现（读取部分，追加到 klines.py）**
+- [x] **Step 3: 实现（读取部分，追加到 klines.py）**
 
 ```python
 import duckdb
@@ -1054,12 +1054,12 @@ class KlineStore:
 
 注意：若 DuckDB 对空 glob 抛的不是 `IOException`（版本差异），运行测试看真实异常类并调整捕获范围（兜底 `duckdb.Error`）。
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `uv run pytest tests/test_kline_store.py -v`
 Expected: 10 passed（含 Task 5 的 5 个）
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/datacenter/store/klines.py tests/test_kline_store.py
@@ -1074,7 +1074,7 @@ git commit -m "feat: KlineStore duckdb reads with partition pruning and last-win
 - Create: `src/datacenter/resolver.py`
 - Test: `tests/test_resolver.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `tests/test_resolver.py`：
 
@@ -1144,12 +1144,12 @@ def test_partial_miss_only_fetches_gaps(env):
     assert meta.get_coverage("600000.SH", "1d") == (T0, T0 + 8 * DAY)
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `uv run pytest tests/test_resolver.py -v`
 Expected: FAIL（ModuleNotFoundError）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `src/datacenter/resolver.py`：
 
@@ -1192,12 +1192,12 @@ class CacheResolver:
             self._meta.extend_coverage(symbol, period, seg_start, seg_end)
 ```
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `uv run pytest tests/test_resolver.py -v`
 Expected: 6 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/datacenter/resolver.py tests/test_resolver.py
@@ -1213,7 +1213,7 @@ git commit -m "feat: CacheResolver with interval subtraction and fetch-through"
 - Modify: `src/datacenter/__init__.py`
 - Test: `tests/test_api.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `tests/test_api.py`：
 
@@ -1258,12 +1258,12 @@ def test_list_symbols_populates_instruments(dc):
     assert dc_.list_symbols() == ["000001.SZ", "600000.SH"]  # 走本地
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `uv run pytest tests/test_api.py -v`
 Expected: FAIL（ImportError）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `src/datacenter/api.py`：
 
@@ -1317,12 +1317,12 @@ from datacenter.exceptions import DataCenterError, DataUnavailableError, RateLim
 __all__ = ["DataCenter", "DataCenterError", "DataUnavailableError", "RateLimitError", "TickFlowError"]
 ```
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `uv run pytest tests/test_api.py -v`
 Expected: 3 passed
 
-- [ ] **Step 5: 全量回归 + Commit**
+- [x] **Step 5: 全量回归 + Commit**
 
 Run: `uv run pytest -v`
 Expected: 全部 passed
@@ -1342,7 +1342,7 @@ git commit -m "feat: DataCenter facade end-to-end"
 
 机制：按 `BACKFILL_ORDER` 逐周期处理；每周期内取 `pending_symbols`（跳过已完成 = 断点续传）；按批（日线 200 标的/批、分钟 100 标的/批，对齐套餐限制）调 `client.get_klines_batch_range`；每批结果按分区落盘，逐 symbol 标记 coverage + done。**整批失败则整批标记 failed**（批量请求是原子调用，无法区分单只失败；重跑整批成本可接受）。批量接口下并发无意义（限流是瓶颈），回填为顺序循环。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `tests/test_backfill.py`：
 
@@ -1412,12 +1412,12 @@ def test_backfill_empty_batch_result_still_marks_done(tmp_path):
 
 给 `DataCenter` 加透传参数 `max_retries: int = 3` 传到 TickFlowClient（api.py 小改，属于本任务范围）。
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `uv run pytest tests/test_backfill.py -v`
 Expected: FAIL（ModuleNotFoundError / TypeError）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `src/datacenter/api.py` 的 `__init__` 签名改为 `(self, data_dir="data", client_tf=None, rate_per_sec=10.0, max_retries=3)`，并传给 `TickFlowClient`。
 
@@ -1473,12 +1473,12 @@ def backfill(dc: DataCenter, periods: list[str] | None = None,
 
 注意：resolver 与 backfill 共用 client（令牌桶在 client 内，全局限速生效）；写入在回填主线程单点进行，满足单写者纪律。**回填前把 client 速率调到对应套餐档位**（分钟批量 30 次/分 = 0.5/s；日线批量 60 次/分 = 1/s），由 CLI 的 `--rate` 传入。
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `uv run pytest tests/test_backfill.py -v`
 Expected: 4 passed
 
-- [ ] **Step 5: 全量回归 + Commit**
+- [x] **Step 5: 全量回归 + Commit**
 
 Run: `uv run pytest -v`
 Expected: 全部 passed
@@ -1496,7 +1496,7 @@ git commit -m "feat: resumable batch backfill job"
 - Create: `scripts/backfill.py`
 - Create: `README.md`
 
-- [ ] **Step 1: 写回填 CLI**
+- [x] **Step 1: 写回填 CLI**
 
 `scripts/backfill.py`：
 
@@ -1542,7 +1542,7 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 2: 真实回源 smoke（小规模）**
+- [x] **Step 2: 真实回源 smoke（小规模）**
 
 ```bash
 uv run python scripts/backfill.py --periods 1d --rate 1.0
@@ -1561,7 +1561,7 @@ print(len(df), df["timestamp"].min(), df["timestamp"].max())
 
 预期：约 730±10 行（3 年交易日），时间跨度覆盖近 3 年。**注意：此行数与数据质量是真实校验，若明显偏少需排查分页逻辑。**
 
-- [ ] **Step 3: 写 README**
+- [x] **Step 3: 写 README**
 
 `README.md`：项目简介、安装（`uv sync` + `TICKFLOW_API_KEY`）、快速上手（`DataCenter.get_klines` 示例）、回填命令、目录结构、设计文档与 spec 的链接、分期说明（二三期待做）。
 
