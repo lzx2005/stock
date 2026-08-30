@@ -16,11 +16,12 @@ class DataCenter:
     """门面：回测引擎的唯一入口。本地优先，缺失回源，查到即存。"""
 
     def __init__(self, data_dir: str | Path = "data", client_tf=None,
-                 rate_per_sec: float = 10.0):
+                 rate_per_sec: float = 10.0, max_retries: int = 3):
         data_dir = Path(data_dir)
         self.meta = MetaStore(data_dir / "meta.db")
         self.klines = KlineStore(data_dir / "klines")
-        self.client = TickFlowClient(tf=client_tf, rate_per_sec=rate_per_sec)
+        self.client = TickFlowClient(tf=client_tf, rate_per_sec=rate_per_sec,
+                                     max_retries=max_retries)
         self.resolver = CacheResolver(self.meta, self.klines, self.client)
 
     def get_klines(self, symbol: str, period: str = "1d",
