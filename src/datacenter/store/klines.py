@@ -48,8 +48,12 @@ class KlineStore:
             stamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
             tmp = dirpath / f".tmp-{stamp}-{tag}.parquet"
             final = dirpath / f"part-{stamp}-{tag}.parquet"
-            part.drop(columns=partition_cols).to_parquet(tmp, index=False, compression="zstd")
-            os.replace(tmp, final)  # 同目录原子 rename
+            try:
+                part.drop(columns=partition_cols).to_parquet(tmp, index=False, compression="zstd")
+                os.replace(tmp, final)  # 同目录原子 rename
+            finally:
+                # 崩溃/失败不残留 .tmp：它会被读取端 **/*.parquet glob 命中，损坏文件打挂扫描
+                tmp.unlink(missing_ok=True)
             written.append(final)
         return written
 
@@ -69,6 +73,7 @@ class KlineStore:
             SELECT symbol, timestamp, open, high, low, close, volume, amount
             FROM read_parquet(?, hive_partitioning=true, filename=true, union_by_name=true)
             WHERE symbol = ANY(?::VARCHAR[]) AND timestamp BETWEEN ? AND ?
+              AND filename NOT LIKE '%/.tmp-%'
             QUALIFY row_number() OVER (
                 PARTITION BY symbol, timestamp ORDER BY filename DESC
             ) = 1

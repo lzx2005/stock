@@ -1,3 +1,4 @@
+import logging
 import random
 import time
 
@@ -7,6 +8,8 @@ from tickflow import TickFlow
 from datacenter.constants import MAX_PAGE
 from datacenter.exceptions import RateLimitError, TickFlowError
 from datacenter.client.ratelimit import TokenBucket
+
+log = logging.getLogger(__name__)
 
 KLINE_COLUMNS = ["symbol", "timestamp", "open", "high", "low", "close", "volume", "amount"]
 
@@ -83,6 +86,11 @@ class TickFlowClient:
             last_ts = int(df["timestamp"].max())
             if len(df) < MAX_PAGE or last_ts >= end_ms:
                 break
+            if last_ts < cursor:
+                # 进度守卫：服务端忽略 start_time、满页但时间戳不前进——断路防死循环
+                log.warning("pagination no progress: symbol=%s period=%s cursor=%d last_ts=%d, stop",
+                            symbol, period, cursor, last_ts)
+                break
             cursor = last_ts + 1
         if not frames:
             return empty_klines()
@@ -123,7 +131,12 @@ class TickFlowClient:
                     frames.append(df)
                     last_ts = int(df["timestamp"].max())
                     if len(df) >= MAX_PAGE and last_ts < end_ms:
-                        pending[sym] = last_ts + 1
+                        if last_ts < cursor:
+                            # 进度守卫：满页但时间戳不前进（服务端忽略 start_time）——放弃续拉防死循环
+                            log.warning("batch pagination no progress: symbol=%s period=%s "
+                                        "cursor=%d last_ts=%d, stop", sym, period, cursor, last_ts)
+                        else:
+                            pending[sym] = last_ts + 1
         if not frames:
             return empty_klines()
         out = pd.concat(frames, ignore_index=True)

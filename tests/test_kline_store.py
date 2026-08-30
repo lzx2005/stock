@@ -87,3 +87,32 @@ def test_read_is_readonly_and_repeatable(store):
     out1 = store.read(["600000.SH"], "1d", 0, 10**13)
     out2 = store.read(["600000.SH"], "1d", 0, 10**13)
     pd.testing.assert_frame_equal(out1, out2)
+
+
+# ---- 加固③：.tmp 文件防护 ----
+
+def test_read_ignores_stray_tmp_files(store, tmp_path):
+    """崩溃残留的 .tmp-*.parquet（内容有效）不得被读取端 glob 命中。"""
+    store.write(make_kline_df("600000.SH", T0, 5, DAY), "1d", tag="good")
+    part_dir = tmp_path / "klines" / "period=1d" / "year=2025"
+    part_dir.mkdir(parents=True, exist_ok=True)
+    stray = make_kline_df("600000.SH", T0 + 100 * DAY, 3, DAY)  # 2025-11，同 year 分区
+    stray.to_parquet(part_dir / ".tmp-20990101000000000000-stray.parquet", index=False)
+    out = store.read(["600000.SH"], "1d", 0, 10**13)
+    assert len(out) == 5  # 不含 .tmp 里的 3 行
+
+
+def test_write_cleans_tmp_on_failure(store, tmp_path, monkeypatch):
+    """to_parquet/rename 中途失败时清理 .tmp，且异常照常抛出。"""
+    import os
+
+    df = make_kline_df("600000.SH", T0, 5, DAY)
+
+    def boom(*args, **kwargs):
+        raise OSError("simulated crash during rename")
+
+    monkeypatch.setattr(os, "replace", boom)
+    with pytest.raises(OSError):
+        store.write(df, "1d", tag="crash")
+    tmps = list((tmp_path / "klines").rglob(".tmp-*"))
+    assert tmps == []
