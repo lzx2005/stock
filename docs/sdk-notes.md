@@ -94,3 +94,21 @@ TickFlowError(Exception)
 
 - `TICKFLOW_API_KEY` 配置在 `~/.zshrc`，非交互 shell 需先 `source ~/.zshrc`（或使用 `zsh -ic`）才能继承。
 - 首次 `uv sync` 直连 PyPI 极慢（~100KB/s），改用清华镜像后秒级完成：`UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple uv sync`。
+
+## 8. 新套餐实测（2026-08-30，Task 3 Step 0，脚本 `scripts/probe_task3.py`）
+
+### 8a. 限流：新套餐明显放宽
+
+以约 1 次/秒的间隔连发 25 次 `tf.klines.get("600000.SH", period="1d", count=1)`，**0 次 RateLimitError**。
+说明新套餐日K限流至少 60 次/分钟（官方规格：日线按只 120次/分、批量 60次/分×200标的；分钟按只 60次/分、批量 30次/分×100标的）。第 5 节记录的 10次/分钟为旧套餐实测，已过时。客户端默认限速仍建议保守（如 10/s 以内），配合 429 重试兜底。
+
+### 8b. `klines.batch` 返回结构（as_dataframe=True）
+
+```python
+tf.klines.batch(["600000.SH", "000001.SZ"], period="1d", count=5, adjust="none", as_dataframe=True)
+```
+
+- 返回 **`dict[symbol, pandas.DataFrame]`**，每个 DataFrame 与 `klines.get(as_dataframe=True)` 同构（11 列，含 symbol/name/trade_date/trade_time）。
+- `count` **按标的计**：count=3 → 每个标的各 3 行。
+- 非法 symbol **不抛异常**，该 key 直接从 dict 中缺失（`batch(["INVALID.XX"], ...)` 返回 `{}`）。
+- 签名还接受 `start_time/end_time`（毫秒）、`show_progress`、`max_workers`、`batch_size`（默认 100，SDK 内部分块并发）。
