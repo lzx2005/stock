@@ -1,0 +1,24 @@
+[project]
+name = "datacenter"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "tickflow[all]>=0.1.17",
+    "duckdb>=1.1",
+    "pandas>=2.2",
+    "pyarrow>=17",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-timeout>=2.3"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/datacenter"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --timeout=60"
