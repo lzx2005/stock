@@ -2,7 +2,6 @@
 运行: uv run python scripts/probe_sdk.py
 """
 import time
-import traceback
 from tickflow import TickFlow
 
 tf = TickFlow()  # 读取环境变量 TICKFLOW_API_KEY
