@@ -34,3 +34,13 @@ class CacheResolver:
             self._klines.write(df, period, tag="resolver")
             # 无论回源是否有数据，该段都标记已解析（防打空）
             self._meta.extend_coverage(symbol, period, seg_start, seg_end)
+
+    def ensure_ex_factors(self, symbol: str) -> list[tuple[int, float]]:
+        """因子不可变：本地有就直接用；没有则回源一次并永久缓存。
+        注意：'没有'可能是真没有（从未除权），用 exf:{symbol} 标记防打空。"""
+        if self._meta.get_meta_flag(f"exf:{symbol}"):
+            return self._meta.get_ex_factors(symbol)
+        factors = self._client.get_ex_factors(symbol)
+        self._meta.upsert_ex_factors(symbol, factors)
+        self._meta.set_meta_flag(f"exf:{symbol}")
+        return factors

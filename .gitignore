@@ -1,5 +1,31 @@
+# 数据与产出（行情数据、策略库、报告——一律不进库）
 data/
+reports/
+
+# 密钥/本地配置兜底
+.env
+*.local
+
+# 系统与虚拟环境
 .DS_Store
 .venv/
 __pycache__/
 *.py[cod]
+
+# 前端构建产物
+frontend/node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# IDE
+.idea/
+
+# Claude Code 本地状态：个人权限设置、缓存库、评估工作区（含真实交易记录）、eval 题库（含真实持仓）不进库；
+# 仅 skill 本体（SKILL.md / scripts / references）入库
+.claude/settings.local.json
+.claude/data/
+.claude/skills/*-workspace/
+.claude/skills/*/evals/
+
+# 第三方 Bark 教程整页存档（他人网站内容，不上传）
+docs/bark/

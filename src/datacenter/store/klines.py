@@ -19,6 +19,7 @@ import pandas as pd
 
 from datacenter.client.tickflow_client import KLINE_COLUMNS, empty_klines
 from datacenter.constants import ALL_PERIODS, MINUTE_PERIODS
+from datacenter.store._duck import query_df, query_scalar
 
 
 class KlineStore:
@@ -80,7 +81,31 @@ class KlineStore:
             ORDER BY symbol, timestamp
         """
         try:
-            out = duckdb.sql(sql, params=[glob, list(symbols), start_ms, end_ms]).df()
+            out = query_df(sql, [glob, list(symbols), start_ms, end_ms])
         except duckdb.IOException:
             return empty_klines()  # 尚无该周期数据
         return out[KLINE_COLUMNS]
+
+    def count(self, symbols: list[str], period: str,
+              start_ms: int, end_ms: int) -> int:
+        """K 线行数（与 read 同过滤/去重语义），供分页总数。纯读，不触发回源。"""
+        if period not in ALL_PERIODS:
+            raise ValueError(f"unknown period: {period}")
+        if not symbols:
+            return 0
+        glob = str(self.root / f"period={period}" / "**" / "*.parquet")
+        sql = """
+            SELECT COUNT(*) FROM (
+                SELECT symbol, timestamp
+                FROM read_parquet(?, hive_partitioning=true, filename=true, union_by_name=true)
+                WHERE symbol = ANY(?::VARCHAR[]) AND timestamp BETWEEN ? AND ?
+                  AND filename NOT LIKE '%/.tmp-%'
+                QUALIFY row_number() OVER (
+                    PARTITION BY symbol, timestamp ORDER BY filename DESC
+                ) = 1
+            )
+        """
+        try:
+            return int(query_scalar(sql, [glob, list(symbols), start_ms, end_ms]))
+        except duckdb.IOException:
+            return 0  # 尚无该周期数据

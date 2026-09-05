@@ -40,18 +40,31 @@ def test_client_error_not_retried(fake_tf):
     assert len(fake_tf.klines.calls) == 1  # 不重试
 
 
-def test_pagination_accumulates_until_short_page(fake_tf):
-    # 第一页满 MAX_PAGE(5000) -> 继续；第二页不足 -> 停止
-    page1 = make_kline_df("600000.SH", 0, 5000, 60_000)
-    page2 = make_kline_df("600000.SH", 5000 * 60_000, 50, 60_000)
+def test_pagination_accumulates_until_start(fake_tf):
+    # 反向分页：第一页满 5000 -> 向旧翻；第二页触及请求起点(min_ts==start_ms) -> 停止
+    page1 = make_kline_df("600000.SH", 5000 * 60_000, 5000, 60_000)   # 最近 5000 根
+    page2 = make_kline_df("600000.SH", 0, 50, 60_000)                 # 更早 50 根，min_ts=0
     fake_tf.klines.queue(page1)
     fake_tf.klines.queue(page2)
     client = make_client(fake_tf)
     out = client.get_klines_range("600000.SH", "1m", 0, 10**13)
     assert len(out) == 5050
     assert len(fake_tf.klines.calls) == 2
-    # 第二页的 start_time 接续第一页最大时间戳
-    assert fake_tf.klines.calls[1]["start_time"] == page1["timestamp"].max() + 1
+    # 第二页的 end_time 接续第一页最旧时间戳（反向）
+    assert fake_tf.klines.calls[1]["end_time"] == page1["timestamp"].min() - 1
+
+
+def test_pagination_short_page_continues_backward(fake_tf):
+    # 服务端每页上限可能略低于 MAX_PAGE：页长未满但仍应继续向旧翻
+    page1 = make_kline_df("600000.SH", 5000 * 60_000, 4980, 60_000)   # 4980 根（<5000）
+    page2 = make_kline_df("600000.SH", 0, 20, 60_000)                 # 触及起点
+    fake_tf.klines.queue(page1)
+    fake_tf.klines.queue(page2)
+    client = make_client(fake_tf)
+    out = client.get_klines_range("600000.SH", "1m", 0, 10**13)
+    assert len(out) == 5000
+    assert len(fake_tf.klines.calls) == 2
+    assert fake_tf.klines.calls[1]["end_time"] == page1["timestamp"].min() - 1
 
 
 def test_empty_result_returns_empty_df(fake_tf):
@@ -69,8 +82,8 @@ def test_list_universe_symbols(fake_tf):
 
 
 def test_batch_range_continues_full_pages(fake_tf):
-    df_full = make_kline_df("a.SH", 0, 5000, 60_000)     # a.SH 满页需续拉
-    df_full2 = make_kline_df("a.SH", 5000 * 60_000, 10, 60_000)
+    df_full = make_kline_df("a.SH", 5000 * 60_000, 5000, 60_000)  # a.SH 满页需反向续拉
+    df_full2 = make_kline_df("a.SH", 0, 10, 60_000)              # a.SH 触及起点
     df_short = make_kline_df("b.SH", 0, 100, 60_000)     # b.SH 一页拉完
     fake_tf.klines.batch_script = [{"a.SH": df_full, "b.SH": df_short},
                                    {"a.SH": df_full2}]
@@ -78,10 +91,10 @@ def test_batch_range_continues_full_pages(fake_tf):
     out = client.get_klines_batch_range(["a.SH", "b.SH"], "1m", 0, 10**13)
     assert len(out) == 5000 + 10 + 100
     assert len(fake_tf.klines.batch_calls) == 2
-    # 第二轮只续拉 a.SH，且 start_time 接续
+    # 第二轮只续拉 a.SH，且 end_time 接续（反向）
     second = fake_tf.klines.batch_calls[1]
     assert second["symbols"] == ["a.SH"]
-    assert second["start_time"] == df_full["timestamp"].max() + 1
+    assert second["end_time"] == df_full["timestamp"].min() - 1
 
 
 def test_batch_range_empty(fake_tf):
@@ -94,7 +107,8 @@ def test_batch_range_empty(fake_tf):
 # ---- 加固①：分页进度守卫（异常服务端忽略 start_time，满页但时间戳不前进）----
 
 def test_pagination_no_progress_breaks(fake_tf, caplog):
-    page = make_kline_df("600000.SH", 0, 5000, 60_000)  # 满页
+    # 满页且时间戳不向旧翻（min_ts > 已下移的 cursor）-> 第二页守卫断路
+    page = make_kline_df("600000.SH", 5000 * 60_000, 5000, 60_000)  # min_ts=300M
     fake_tf.klines.fuse_after = 10  # 无守卫时保险丝快速熔断（防测试挂起）
     fake_tf.klines.queue_forever(page)  # 服务端永远返回同一满页
     client = make_client(fake_tf)
@@ -106,7 +120,7 @@ def test_pagination_no_progress_breaks(fake_tf, caplog):
 
 
 def test_batch_no_progress_breaks(fake_tf, caplog):
-    page = make_kline_df("a.SH", 0, 5000, 60_000)
+    page = make_kline_df("a.SH", 5000 * 60_000, 5000, 60_000)
     fake_tf.klines.fuse_after = 10
     fake_tf.klines.batch_queue_forever({"a.SH": page})
     client = make_client(fake_tf)
@@ -165,3 +179,9 @@ def test_sdk_permission_error_not_retried(fake_tf):
         client.get_klines_range("600000.SH", "1m", 1000, 4000)
     assert not isinstance(exc_info.value, RateLimitError)
     assert len(fake_tf.klines.calls) == 1  # client 类错误不重试
+
+
+def test_get_ex_factors(fake_tf):
+    fake_tf.klines.ex_factors.set([(1700000000000, 0.95)])
+    client = make_client(fake_tf)
+    assert client.get_ex_factors("600000.SH") == [(1700000000000, 0.95)]

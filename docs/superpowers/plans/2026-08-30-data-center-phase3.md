@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **git 约定（2026-08-30）：本计划沿用第二期约定，git 暂缓，不逐任务 commit。** 每完成一步立即勾选 `- [ ]`→`- [x]` 作进度索引（CLAUDE.md 规则），所有 Commit Step 保持 `- [ ]`，待用户说「提交」后一次性整体入库（二期+三期合并）。
+
 **Goal:** 实时行情落地（WebSocket 采集 → Parquet，供回放复盘）+ 盘中查询当日未完成 K 线（半可变层），收盘后由日终任务固化。
 
 **Architecture:** 独立 `ws_collector` 进程：订阅 → 内存环形缓冲 → 定时批量落 `data/realtime/date=YYYY-MM-DD/`。盘中半可变层优先用 REST `klines.intraday` 接口（比 WS 简单可靠）：当日段查询穿透 intraday 接口，60s 内存 TTL 缓存，不落盘；收盘后由第二期日终任务固化。WS 落库数据在日终与 REST 核对，以 REST 为准。
@@ -31,7 +33,7 @@
 - Create: `scripts/probe_ws.py`
 - Modify: `docs/sdk-notes.md`
 
-- [ ] **Step 1: 探测 SDK**
+- [x] **Step 1: 探测 SDK**
 
 ```python
 """运行: uv run python scripts/probe_ws.py"""
@@ -46,7 +48,7 @@ print("tickflow 模块成员:", [a for a in dir(tickflow) if not a.startswith("_
 
 同时检查 SDK 包源码：`uv run python -c "import tickflow, os; print(os.path.dirname(tickflow.__file__))"`，grep 包内 `websocket`/`wss` 字样。
 
-- [ ] **Step 2: 结论落文档**
+- [x] **Step 2: 结论落文档**
 
 `docs/sdk-notes.md` 记录：SDK 有无 WS、端点、鉴权方式、消息结构样例。**若无 WS 支持**，向服务商索取 WS 文档后再继续 Task 2-4；半可变层（Task 5-6）不依赖 WS，可先做。
 
@@ -65,7 +67,7 @@ git commit -m "chore: websocket capability probe"
 - Create: `src/datacenter/store/realtime.py`
 - Test: `tests/test_realtime_store.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 import pandas as pd
@@ -108,7 +110,7 @@ def test_read_empty(store):
     assert store.read("x.SH", 0, 10**13).empty
 ```
 
-- [ ] **Step 2: 运行确认失败 → Step 3: 实现 → Step 4: 通过**
+- [x] **Step 2: 运行确认失败 → Step 3: 实现 → Step 4: 通过**
 
 实现要点：与 KlineStore 同模式（临时文件 → 原子 rename → DuckDB 读），分区为 `date=YYYY-MM-DD`（Asia/Shanghai），文件 `rt-{HHMMSSffffff}.parquet`；列：`symbol, ts_ms, last_price, volume, turnover, kind`（kind: snapshot/tick，按 Task 1 探测的实际消息结构调整）。
 
@@ -127,7 +129,7 @@ git commit -m "feat: RealtimeStore date-partitioned parquet"
 - Create: `src/datacenter/jobs/ws_collector.py`
 - Test: `tests/test_ws_collector.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 与传输解耦设计：`Collector(store, flush_interval=5.0, flush_count=1000, clock=...)` 暴露 `on_message(dict)` 与 `flush()`；WS 连接层只负责把消息转成 dict 喂给 `on_message`。测试全在内存完成：
 
@@ -156,7 +158,7 @@ def test_malformed_message_dropped_with_log(tmp_path, caplog):
     assert store.read("s", 0, 10).empty
 ```
 
-- [ ] **Step 2: 运行确认失败 → Step 3: 实现 → Step 4: 通过**
+- [x] **Step 2: 运行确认失败 → Step 3: 实现 → Step 4: 通过**
 
 实现要点：
 
@@ -187,7 +189,7 @@ git commit -m "feat: ws collector buffering core"
 - Modify: `src/datacenter/jobs/ws_collector.py`（加 `run_collector`）
 - Create: `scripts/ws_collect.py`
 
-- [ ] **Step 1: 实现连接层**
+- [x] **Step 1: 实现连接层**
 
 ```python
 async def run_collector(symbols, store, reconnect_max=10):
@@ -200,11 +202,11 @@ async def run_collector(symbols, store, reconnect_max=10):
 
 连接层不写单测（真网络依赖），用 spike 验证：盘中跑 5 分钟，检查 `data/realtime/date=<今天>/` 有文件、行数增长、字段齐全。
 
-- [ ] **Step 2: 写进程入口**
+- [x] **Step 2: 写进程入口**
 
 `scripts/ws_collect.py`：CLI 参数 `--universe CN_Equity_A`（默认）或 `--symbols a.SH,b.SH`；`asyncio.run(run_collector(...))`；SIGINT 优雅退出（退出前 flush）；日志到 stdout + `data/ws_collector.log`。
 
-- [ ] **Step 3: 盘中真实验证（spike）**
+- [ ] **Step 3: 盘中真实验证（spike）**（权限阻塞：NO_WS_PERMISSION，见 sdk-notes.md §11）
 
 交易时段运行 5 分钟，验证落盘与行数增长；记录消息速率（条/秒）到 `docs/sdk-notes.md`，据此校准 `flush_count/flush_interval` 默认值。
 
@@ -225,7 +227,7 @@ git commit -m "feat: ws collector process with reconnect"
 - Create: `src/datacenter/intraday.py`
 - Test: `tests/test_intraday.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 前置准备（本任务内一并做）：
 - conftest.py 把 `FakeClock` 从 `test_ratelimit.py` 提升为共享 fixture 工具类
@@ -272,7 +274,7 @@ def test_get_klines_intraday_day_uses_intraday_api(tmp_path):
     assert cov is None or cov[1] < T0
 ```
 
-- [ ] **Step 2: 运行确认失败 → Step 3: 实现 → Step 4: 通过**
+- [x] **Step 2: 运行确认失败 → Step 3: 实现 → Step 4: 通过**
 
 实现要点：
 
@@ -331,7 +333,7 @@ git commit -m "feat: intraday semi-mutable layer with TTL cache"
 - Modify: `src/datacenter/jobs/daily_maintenance.py`
 - Test: `tests/test_daily_maintenance.py` 追加
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 def test_daily_solidifies_minute_klines(tmp_path):
@@ -369,7 +371,7 @@ def test_ws_rest_reconciliation(tmp_path):
 
 （快照聚合规则：每分钟窗口首条 last_price=open、末条=close、max/min=high/low、volume 取窗口差分。实现时把 `...` 按 FakeKlines 生成的价格补全。）
 
-- [ ] **Step 2~4: 实现并通过**
+- [x] **Step 2~4: 实现并通过**（真实分钟回源仍被 klines.get(1m) 无权限阻塞，见 sdk-notes.md §2；逻辑经 fake 单测+当日段真实 intraday smoke 验证）
 
 实现要点：
 - `run_daily_maintenance` 加 `periods` 参数（默认 `["1d", "1m"]`），分钟周期同样走"覆盖缺口回源"逻辑固化
@@ -387,8 +389,8 @@ git commit -m "feat: daily solidification of intraday klines + WS/REST reconcili
 
 ### Task 7: README + 全量回归
 
-- [ ] **Step 1: README 补充**：WS 采集启动命令、盘中查询行为说明（当日数据 TTL 60s）、realtime 数据回放读取示例
-- [ ] **Step 2: `uv run pytest` 全量回归**
+- [x] **Step 1: README 补充**：WS 采集启动命令、盘中查询行为说明（当日数据 TTL 60s）、realtime 数据回放读取示例
+- [x] **Step 2: `uv run pytest` 全量回归**
 - [ ] **Step 3: Commit**
 
 ```bash

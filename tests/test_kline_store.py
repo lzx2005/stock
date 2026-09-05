@@ -116,3 +116,53 @@ def test_write_cleans_tmp_on_failure(store, tmp_path, monkeypatch):
         store.write(df, "1d", tag="crash")
     tmps = list((tmp_path / "klines").rglob(".tmp-*"))
     assert tmps == []
+
+
+# ---- KlineStore.count ----
+
+def test_count_matches_read(store):
+    df = make_kline_df("600000.SH", T0, 10, DAY)
+    store.write(df, "1d", tag="a")
+    assert store.count(["600000.SH"], "1d", T0, T0 + 10 * DAY) == 10
+
+
+def test_count_filters_range_and_dedup(store):
+    df1 = make_kline_df("600000.SH", T0, 5, DAY)
+    store.write(df1, "1d", tag="old")
+    df2 = df1.copy()
+    df2["close"] = 999.0                     # 修正数据后写，去重"后写胜出"
+    store.write(df2, "1d", tag="fix")
+    assert store.count(["600000.SH"], "1d", T0, T0 + 5 * DAY) == 5
+    assert store.count(["600000.SH"], "1d", T0 + 2 * DAY, T0 + 3 * DAY) == 2
+
+
+def test_count_empty_and_no_symbols(store):
+    assert store.count(["600000.SH"], "1d", 0, 10**13) == 0
+    assert store.count([], "1d", 0, 10**13) == 0
+
+
+# ---- 并发读加固：duckdb 默认连接线程不安全（webui 点击并发 klines → 500）----
+
+def test_concurrent_reads_thread_safe(store):
+    """两个线程同时 read/count 必须全部成功。
+
+    根因：duckdb.sql() 走进程级默认连接，线程不安全——并发查询抛
+    InvalidInputException（甚至死锁）。用 barrier 对齐起跑 + 30 轮放大命中率。
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+
+    df = make_kline_df("600000.SH", T0, 10, DAY)
+    store.write(df, "1d", tag="t")
+    start, end = T0, T0 + 9 * DAY
+    barrier = threading.Barrier(2)
+
+    def do(_):
+        barrier.wait()
+        return (len(store.read(["600000.SH"], "1d", start, end)),
+                store.count(["600000.SH"], "1d", start, end))
+
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        for _ in range(30):
+            for rows, n in ex.map(do, range(2)):
+                assert rows == 10 and n == 10

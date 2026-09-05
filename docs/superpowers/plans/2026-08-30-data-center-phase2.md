@@ -11,6 +11,8 @@
 **Spec:** `docs/superpowers/specs/2026-08-30-data-center-design.md` §4/§7/§8
 **前置依赖:** `docs/superpowers/plans/2026-08-30-data-center-phase1.md` 已完成（MetaStore/KlineStore/TickFlowClient/DataCenter 存在）
 
+> **⚠️ 本阶段 git 暂缓（用户决定 2026-08-30）**：各任务末尾的 "Commit" 步骤复选框一律不勾，代码完成后留在工作区，等全部任务结束再统一提交。判断任务是否完成看其余步骤是否全勾即可，Step N "Commit" 未勾**不代表任务未完成**。
+
 ---
 
 ## 关键设计约定
@@ -39,7 +41,7 @@
 - Create: `docs/sdk-notes.md` 追加（若已存在）
 - Test: `tests/test_meta.py`、`tests/test_tickflow_client.py` 追加
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `tests/test_meta.py` 追加：
 
@@ -65,12 +67,12 @@ conftest.py 加 `FakeExFactors`：`set(rows)` 预设、`.get(symbol)` 返回 `[{
 
 **贯穿本计划的规则**：每新增一个 SDK 触点（ex_factors / instruments / financials / intraday），Fake  counterpart 在同一任务内加入 conftest，且 fake 属性路径 == client 调用路径。
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `uv run pytest tests/test_meta.py tests/test_tickflow_client.py -v`
 Expected: 新测试 FAIL
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 meta.py 的 `_SCHEMA` 追加：
 
@@ -109,12 +111,12 @@ tickflow_client.py 追加：
 
 注意：SDK 的 ex-factors 调用形态（`tf.klines.ex_factors(symbol)` 还是 `tf.ex_factors.get(symbol)`）以 Task 1 探测/scripts 实测为准，实现时先 `dir(tf.klines)` 确认。
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `uv run pytest tests/test_meta.py tests/test_tickflow_client.py -v`
 Expected: 全 passed
 
-- [ ] **Step 5: 因子语义校准（真实回源）**
+- [x] **Step 5: 因子语义校准（真实回源）**
 
 `scripts/calibrate_adjust.py`：取 600000.SH 近 3 年日线，分别用 `adjust="none"` 和 `adjust="forward"` 回源，同时拉 ex-factors；验证哪种本地公式能复现服务端前复权结果：
 
@@ -156,7 +158,7 @@ git commit -m "feat: ex-factors storage + client method + adjust semantics calib
 - Create: `src/datacenter/adjust.py`
 - Test: `tests/test_adjust.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `tests/test_adjust.py`：
 
@@ -217,12 +219,12 @@ def test_empty_factors_is_identity():
     pd.testing.assert_frame_equal(out, df)
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `uv run pytest tests/test_adjust.py -v`
 Expected: FAIL（ModuleNotFoundError）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `src/datacenter/adjust.py`（按 Task 1 校准结论实现；以下为"乘性、因子<1"假设的版本）：
 
@@ -258,7 +260,7 @@ def apply_adjust(df: pd.DataFrame, factors: list[tuple[int, float]], adjust: str
     return out
 ```
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `uv run pytest tests/test_adjust.py -v`
 Expected: 5 passed
@@ -279,7 +281,7 @@ git commit -m "feat: local forward/backward adjustment"
 - Modify: `src/datacenter/resolver.py`（ensure_ex_factors）
 - Test: `tests/test_api.py` 追加
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `tests/test_api.py` 追加：
 
@@ -305,12 +307,12 @@ def test_get_klines_additive_falls_through_to_remote(dc):
     assert fake.klines.calls[-1]["adjust"] == "forward_additive"
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `uv run pytest tests/test_api.py -v`
 Expected: 新测试 FAIL
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 resolver.py 追加：
 
@@ -352,7 +354,7 @@ api.py 的 `get_klines` 增加 `adjust: str = "forward"` 参数：
 
 `TickFlowClient.get_klines_range` 增加 `adjust="none"` 参数透传（小改）。
 
-- [ ] **Step 4: 运行确认通过 + 真实对拍**
+- [x] **Step 4: 运行确认通过 + 真实对拍**
 
 Run: `uv run pytest tests/test_api.py -v` → 全 passed
 
@@ -377,7 +379,7 @@ git commit -m "feat: adjust integrated into get_klines, verified against server-
 
 缓存键 `(symbol, period_end)`；`fin_fetch_log(symbol, table, fetched_at)` 控制 latest 刷新（TTL 24h）。表结构不手写 DDL——pandas `to_sql` 动态建表，读取用 SQL 查询，避免 openapi 字段变更时改代码。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `tests/test_financials.py`：
 
@@ -432,12 +434,12 @@ def test_dedup_on_refetch(dc):
     assert len(df) == 2  # 重复拉取不产生重复行
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `uv run pytest tests/test_financials.py -v`
 Expected: FAIL
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `src/datacenter/store/financials.py`：
 
@@ -541,7 +543,7 @@ api.py 追加：
 
 `DataCenter.__init__` 加 `self.financials = FinancialStore(data_dir / "meta.db")`（与 MetaStore 共库不同表，WAL 支持）。
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `uv run pytest tests/test_financials.py -v`
 Expected: 3 passed
@@ -570,7 +572,7 @@ git commit -m "feat: financial data caching (5 tables, latest TTL refresh)"
 - Modify: `src/datacenter/api.py`
 - Test: `tests/test_meta.py`、`tests/test_api.py` 追加
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 def test_instrument_metadata_cached(tmp_path):
@@ -593,7 +595,7 @@ def test_universe_members_cached(tmp_path):
 
 （`FakeInstruments` 加进 conftest：`.batch(symbols)` 返回列表，`.calls` 计数。TTL：instruments/universe 元数据 24h 刷新，复用 meta_kv 存 fetched_at。）
 
-- [ ] **Step 2: 运行确认失败 → Step 3: 实现 → Step 4: 通过**
+- [x] **Step 2: 运行确认失败 → Step 3: 实现 → Step 4: 通过**
 
 实现要点：meta.py 的 instruments 表加 `name TEXT, type TEXT, region TEXT, ext_json TEXT` 列（`ALTER TABLE` 兼容或重建——第一期表若已上线，用 `ALTER TABLE instruments ADD COLUMN`）；universe_members 表 `(universe_id, symbol, PRIMARY KEY(universe_id, symbol))`；`get_instruments` / `get_universe_symbols` 走"本地缺失或超 24h 才回源"。
 
@@ -612,7 +614,7 @@ git commit -m "feat: instrument metadata + universe caching with TTL"
 - Create: `src/datacenter/quality.py`
 - Test: `tests/test_quality.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 def test_trading_calendar_from_index(tmp_path):
@@ -635,7 +637,7 @@ def test_find_gaps_detects_missing_days(tmp_path):
 
 （新股上市前/长期停牌的"缺口"属正常——`find_gaps` 只报，由调用方结合上市日期判断是否补拉。）
 
-- [ ] **Step 2~4: 实现并通过**
+- [x] **Step 2~4: 实现并通过**
 
 `quality.py`：
 
@@ -692,7 +694,7 @@ git commit -m "feat: trading calendar + gap detection and repair"
 - Create: `scripts/validate.py`
 - Test: `tests/test_quality.py` 追加
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 def test_sample_compare_detects_mismatch(tmp_path):
@@ -730,7 +732,7 @@ def test_minute_daily_cross_check(tmp_path):
     assert mismatches == ["600000.SH"]
 ```
 
-- [ ] **Step 2~4: 实现并通过**
+- [x] **Step 2~4: 实现并通过**
 
 实现要点：
 - `sample_compare(dc, symbols, period, start, end, tol=1e-6)`：对给定 symbols 重新回源（绕过缓存），与本地逐 `(timestamp, close/volume)` 比对，返回不一致 symbol 列表
@@ -755,7 +757,7 @@ git commit -m "feat: sampling comparison + minute/daily cross validation"
 
 日终四步（spec §7.2）：拉当日全市场日 K 固化 → 更新除权因子 → 刷新 instruments/标的池（超 TTL 的）→ 更新 coverage。产出报告。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 def test_daily_maintenance_appends_and_updates(tmp_path):
@@ -775,7 +777,7 @@ def test_daily_maintenance_appends_and_updates(tmp_path):
     assert len(df) == 1  # 当日已固化
 ```
 
-- [ ] **Step 2~4: 实现并通过**
+- [x] **Step 2~4: 实现并通过**
 
 `daily_maintenance.py` 要点：
 
@@ -833,8 +835,8 @@ git commit -m "feat: daily maintenance job with reports"
 
 ### Task 9: README 更新 + 全量回归
 
-- [ ] **Step 1: README 补充**：复权用法（`adjust="forward"` 默认）、财务接口用法、日终 cron 示例（`0 16 * * 1-5 cd /path && uv run python scripts/daily.py`）、校验命令
-- [ ] **Step 2: `uv run pytest` 全量回归**，全部通过
+- [x] **Step 1: README 补充**：复权用法（`adjust="forward"` 默认）、财务接口用法、日终 cron 示例（`0 16 * * 1-5 cd /path && uv run python scripts/daily.py`）、校验命令
+- [x] **Step 2: `uv run pytest` 全量回归**，全部通过
 - [ ] **Step 3: Commit**
 
 ```bash

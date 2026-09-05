@@ -22,13 +22,15 @@ def main():
                    help="每秒请求上限（日线批量 60次/分=1.0，分钟批量 30次/分=0.5）")
     p.add_argument("--batch-size", type=int, default=None,
                    help="默认按周期取套餐上限（日线 200 / 分钟 100）")
+    p.add_argument("--symbols", type=str, default=None, help="逗号分隔；默认全市场")
     p.add_argument("--data-dir", type=str, default="data")
     args = p.parse_args()
 
     dc = DataCenter(data_dir=args.data_dir, rate_per_sec=args.rate)
     periods = args.periods.split(",") if args.periods else None
+    symbols = args.symbols.split(",") if args.symbols else None
     t0 = time.time()
-    report = backfill(dc, periods=periods, batch_size=args.batch_size)
+    report = backfill(dc, periods=periods, batch_size=args.batch_size, symbols=symbols)
     print(f"\n耗时 {time.time() - t0:.0f}s | 完成 {len(report['done'])} 个 symbol×period"
           f" | 失败 {len(report['failed'])} 个")
     if report["failed"]:

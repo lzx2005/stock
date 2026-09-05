@@ -24,6 +24,20 @@ class Repeat:
         self.item = item
 
 
+class FakeClock:
+    """可控时钟：now() 返回 self.t（秒），sleep() 前推时间。供限流/缓存 TTL 测试注入。"""
+    def __init__(self):
+        self.t = 0.0
+        self.slept = []
+
+    def now(self):
+        return self.t
+
+    def sleep(self, secs):
+        self.slept.append(secs)
+        self.t += secs
+
+
 class FakeKlines:
     """模拟 tf.klines：按调用顺序返回预设结果或抛异常。
     fuse_after：超过该调用次数抛 RuntimeError——死循环防护测试的保险丝，
@@ -33,6 +47,8 @@ class FakeKlines:
         self.script = []        # get() 队列: DataFrame | Exception | Repeat
         self.batch_calls = []
         self.batch_script = []  # batch() 队列: dict[symbol, DataFrame] | Exception | Repeat
+        self.intraday_calls = 0
+        self.intraday_df = pd.DataFrame()  # intraday() 返回的当日数据（默认空）
         self.fuse_after = fuse_after
 
     def queue(self, item):
@@ -75,6 +91,11 @@ class FakeKlines:
             raise item
         return item
 
+    def intraday(self, symbol, period="1m", as_dataframe=False):
+        """当日分钟 K（客户端调用路径 tf.klines.intraday）。返回预设的 intraday_df。"""
+        self.intraday_calls += 1
+        return self.intraday_df
+
 
 class FakeUniverses:
     def __init__(self, symbols):
@@ -83,9 +104,36 @@ class FakeUniverses:
         return {"id": universe_id, "symbols": self._symbols}
 
 
+class FakeInstruments:
+    """模拟 tf.instruments.batch：返回 list[dict]，.calls 计数。"""
+    def __init__(self, rows):
+        self._rows = rows  # dict[symbol, dict]
+        self.calls = 0
+
+    def batch(self, symbols):
+        self.calls += 1
+        return [self._rows[s] for s in symbols if s in self._rows]
+
+
+class FakeExFactors:
+    """模拟 tf.klines.ex_factors（真实 SDK：调用返回 {symbol: [{timestamp, ex_factor}]}）。
+    set(rows) 预设 [(ts, factor)]；调用形态与 client 调用路径 tf.klines.ex_factors(symbol) 一致。"""
+    def __init__(self):
+        self.rows = []
+        self.calls = []
+
+    def set(self, rows):
+        self.rows = list(rows)
+
+    def __call__(self, symbol):
+        self.calls.append(symbol)
+        return {symbol: [{"timestamp": ts, "ex_factor": f} for ts, f in self.rows]}
+
+
 class FakeTickFlow:
     def __init__(self, symbols=None):
         self.klines = FakeKlines()
+        self.klines.ex_factors = FakeExFactors()
         self.universes = FakeUniverses(symbols or [])
 
 

@@ -10,14 +10,15 @@ log = logging.getLogger(__name__)
 
 def backfill(dc: DataCenter, periods: list[str] | None = None,
              start_ms: int | None = None, end_ms: int | None = None,
-             batch_size: int | None = None) -> dict:
-    """全市场历史回填。断点续传：已标记 done 的 (symbol, period) 跳过。
+             batch_size: int | None = None, symbols: list[str] | None = None) -> dict:
+    """历史回填。断点续传：已标记 done 的 (symbol, period) 跳过。
 
     分钟周期默认只拉最近 365 天（套餐硬限制），日线级默认 3 年。
     batch_size 默认按周期取套餐上限（分钟 100 / 日线 200）。
+    symbols 默认全市场（CN_Equity_A）；可传子集（如分钟抽样）。
     """
     end_ms = end_ms if end_ms is not None else int(time.time() * 1000)
-    symbols = dc.list_symbols()
+    symbols = symbols if symbols is not None else dc.list_symbols()
     report = {"done": [], "failed": {}}
 
     for period in (periods or BACKFILL_ORDER):
