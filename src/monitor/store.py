@@ -12,13 +12,13 @@ CREATE TABLE IF NOT EXISTS tasks (
     interval_sec INTEGER NOT NULL DEFAULT 60,
     enabled INTEGER NOT NULL DEFAULT 1,
     notify INTEGER NOT NULL DEFAULT 1,
-    buy_on INTEGER NOT NULL DEFAULT 0,
-    sell_on INTEGER NOT NULL DEFAULT 0,
+    lamp_on INTEGER NOT NULL DEFAULT 0,
     poll_count INTEGER NOT NULL DEFAULT 0,
     signal_count INTEGER NOT NULL DEFAULT 0,
     last_run_at INTEGER,
     error_count INTEGER NOT NULL DEFAULT 0,
     last_error TEXT,
+    description TEXT NOT NULL DEFAULT '',
     created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS signals (
@@ -31,9 +31,9 @@ CREATE TABLE IF NOT EXISTS signals (
 );
 """
 
-_LAMP_FIELDS = ("buy_on", "sell_on")
+_LAMP_FIELDS = ("lamp_on",)
 
-_UPDATE_FIELDS = ("name", "symbol", "script", "interval_sec", "notify")
+_UPDATE_FIELDS = ("name", "symbol", "script", "interval_sec", "notify", "description")
 
 
 class MonitorStore:
@@ -46,17 +46,42 @@ class MonitorStore:
         self._conn = sqlite3.connect(str(path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA)
+        self._migrate()
+
+    def _migrate(self):
+        """老库补列/换列：CREATE TABLE IF NOT EXISTS 不会改已有表，缺列时 ALTER 补上。
+
+        单灯迁移（2026-09-06）：buy_on/sell_on 双灯 → lamp_on 单灯。
+        lamp_on 继承原 buy_on 值尽力延续灯状态，然后 DROP 旧列
+        （SQLite ≥3.35 支持 DROP COLUMN）。
+        """
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(tasks)")}
+        if "description" not in cols:
+            self._conn.execute(
+                "ALTER TABLE tasks ADD COLUMN description TEXT NOT NULL DEFAULT ''")
+        if "lamp_on" not in cols:
+            self._conn.execute(
+                "ALTER TABLE tasks ADD COLUMN lamp_on INTEGER NOT NULL DEFAULT 0")
+            if "buy_on" in cols:
+                self._conn.execute("UPDATE tasks SET lamp_on = buy_on")
+        if "buy_on" in cols:
+            self._conn.execute("ALTER TABLE tasks DROP COLUMN buy_on")
+        if "sell_on" in cols:
+            self._conn.execute("ALTER TABLE tasks DROP COLUMN sell_on")
+        self._conn.commit()
 
     def close(self):
         self._conn.close()
 
     # ---- tasks ----
     def add_task(self, name: str, symbol: str, script: str,
-                 interval_sec: int = 60, notify: int = 1) -> int:
+                 interval_sec: int = 60, notify: int = 1,
+                 description: str = "") -> int:
         cur = self._conn.execute(
-            "INSERT INTO tasks (name, symbol, script, interval_sec, notify, created_at)"
-            " VALUES (?,?,?,?,?,?)",
-            (name, symbol, script, interval_sec, notify, int(time.time() * 1000)))
+            "INSERT INTO tasks (name, symbol, script, interval_sec, notify, description, created_at)"
+            " VALUES (?,?,?,?,?,?,?)",
+            (name, symbol, script, interval_sec, notify, description,
+             int(time.time() * 1000)))
         self._conn.commit()
         return cur.lastrowid
 
@@ -70,10 +95,12 @@ class MonitorStore:
         return dict(row) if row else None
 
     def update_task(self, task_id: int, *, name=None, symbol=None,
-                    script=None, interval_sec=None, notify=None) -> None:
+                    script=None, interval_sec=None, notify=None,
+                    description=None) -> None:
         """只更新非 None 的字段；全为 None 时不执行任何 SQL。"""
         values = {"name": name, "symbol": symbol, "script": script,
-                  "interval_sec": interval_sec, "notify": notify}
+                  "interval_sec": interval_sec, "notify": notify,
+                  "description": description}
         sets, args = [], []
         for field in _UPDATE_FIELDS:
             if values[field] is not None:

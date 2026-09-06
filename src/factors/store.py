@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 import pyarrow.parquet as pq
 
+from datacenter.constants import period_dir_token
 from factors.compute import apply_factor
 from factors.registry import get_factor
 
@@ -19,7 +20,7 @@ class FactorStore:
     # ---- 内部：路径 / 读写 ----
     def _fp_dir(self, fingerprint): return self.root / fingerprint
     def _path(self, fingerprint, symbol, period):
-        return self._fp_dir(fingerprint) / f"symbol={symbol}" / f"period={period}" / "part.parquet"
+        return self._fp_dir(fingerprint) / f"symbol={symbol}" / f"period={period_dir_token(period)}" / "part.parquet"
 
     def _load(self, path) -> pd.Series:
         if not path.exists():
@@ -104,7 +105,7 @@ class FactorStore:
             shutil.rmtree(d, ignore_errors=True)
             return
         for sym_dir in d.glob("symbol=*"):   # 只删该 period 子目录
-            shutil.rmtree(sym_dir / f"period={period}", ignore_errors=True)
+            shutil.rmtree(sym_dir / f"period={period_dir_token(period)}", ignore_errors=True)
 
     def warm(self, symbols, factors, period="1d", start_ms=None, end_ms=None, show_progress=False):
         total = len(symbols) * len(factors)

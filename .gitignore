@@ -15,7 +15,13 @@ __pycache__/
 # 前端构建产物
 frontend/node_modules/
 frontend/dist/
+frontend-gpt/node_modules/
+frontend-gpt/dist/
+frontend-gpt/test-results/
 *.tsbuildinfo
+
+# Codex 镜像目录（.claude/skills 的副本，其 workspace 含真实交易记录；以 .claude/skills 为准，不入库）
+.agents/
 
 # IDE
 .idea/

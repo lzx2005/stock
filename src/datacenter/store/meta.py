@@ -140,6 +140,10 @@ class MetaStore:
         now = time.time()
         for r in rows:
             sym = r["symbol"]
+            # TickFlow 返回键为 "ext"（dict）；也兼容已序列化的 "ext_json"
+            ext = r.get("ext_json", r.get("ext"))
+            if isinstance(ext, (dict, list)):
+                ext = json.dumps(ext, ensure_ascii=False)
             self._conn.execute(
                 "INSERT INTO instruments (symbol, exchange, code, name, type, region, ext_json,"
                 " updated_at) VALUES (?,?,?,?,?,?,?,?)"
@@ -147,7 +151,7 @@ class MetaStore:
                 " region=excluded.region, ext_json=excluded.ext_json,"
                 " updated_at=excluded.updated_at",
                 (sym, r.get("exchange") or sym.split(".")[-1], r.get("code") or sym.split(".")[0],
-                 r.get("name"), r.get("type"), r.get("region"), r.get("ext_json"), now))
+                 r.get("name"), r.get("type"), r.get("region"), ext, now))
         self._conn.commit()
 
     def get_instrument(self, symbol: str) -> dict | None:

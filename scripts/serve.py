@@ -1,8 +1,8 @@
-"""本地行情/因子查询服务。
+"""本地行情/因子查询服务（纯 API，无内置前端）。
 
 用法：
-  uv run python scripts/serve.py                 # 后端 8666（仅 /api）
-  若需前端页面：先 cd frontend && npm run build，再启动本脚本（服务 dist，单进程访问 localhost:8666）
+  uv run python scripts/serve.py                 # 后端 127.0.0.1:8666（仅 /api）
+前端已迁移到独立工程，经 dev server 代理 /api → 8666 对接（见 docs/FRONTEND.md §5.0）。
 """
 from pathlib import Path
 

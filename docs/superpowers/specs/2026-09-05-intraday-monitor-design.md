@@ -24,7 +24,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│ scripts/monitor.py（常驻守护进程，交易时段运行）        │
+│ scripts/monitor_daemon.py（常驻守护进程，交易时段运行）        │
 │  ├─ 调度器：每分钟一轮，按任务 interval_sec 到期的执行   │
 │  ├─ 脚本运行时：exec 执行 tasks.script 的 check(ctx)   │
 │  ├─ 边沿判定：DB 灯状态 vs 本次结果 → 买/卖 开/关      │
@@ -57,7 +57,7 @@
 | `notify.py` | Bark 推送 `send(text)`：读 `data/monitor_config.json` 拿 key，POST `api.day.app/push` | urllib（不加新依赖） |
 | `daemon.py` | 主循环：交易时段判断、任务调度、边沿判定、写信号、错误计数 | 以上三者 |
 
-入口脚本：`scripts/monitor.py`（启动守护进程）+ `scripts/monitor_cli.py`（register/list/show/toggle/delete 任务管理 CLI，盯盘专家 skill 的程序化入口，人也能用）。
+入口脚本：`scripts/monitor_daemon.py`（启动守护进程）+ `scripts/monitor_cli.py`（register/list/show/toggle/delete 任务管理 CLI，盯盘专家 skill 的程序化入口，人也能用）。
 
 ## 5. DB 表结构（`data/monitor.db`，WAL 模式）
 
@@ -197,7 +197,7 @@ def send(text: str) -> None:
 | check 运行抛异常 | `error_count+1`、`last_error`，其他任务不受影响 |
 | 取数失败（限流/网络/休市空数据） | 记错误跳过本轮；休市空数据不记错误（静默跳过） |
 | 通知发送失败 | 记 `last_error`，信号已入库不丢 |
-| 守护进程崩溃 | 人工重启（`scripts/monitor.py`）；灯状态在 DB，重启不丢状态 |
+| 守护进程崩溃 | 人工重启（`scripts/monitor_daemon.py`）；灯状态在 DB，重启不丢状态 |
 | 停牌（当日无 bar） | ctx 取数为空 → 跳过本轮，不报错 |
 
 ## 11. 测试方案

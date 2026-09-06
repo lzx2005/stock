@@ -18,7 +18,7 @@ import duckdb
 import pandas as pd
 
 from datacenter.client.tickflow_client import KLINE_COLUMNS, empty_klines
-from datacenter.constants import ALL_PERIODS, MINUTE_PERIODS
+from datacenter.constants import ALL_PERIODS, MINUTE_PERIODS, period_dir_token
 from datacenter.store._duck import query_df, query_scalar
 
 
@@ -42,7 +42,7 @@ class KlineStore:
         written = []
         for keys, part in df.groupby(partition_cols, observed=True):
             keys = keys if isinstance(keys, tuple) else (keys,)
-            dirpath = self.root / f"period={period}" / f"year={keys[0]}"
+            dirpath = self.root / f"period={period_dir_token(period)}" / f"year={keys[0]}"
             if len(keys) > 1:
                 dirpath = dirpath / f"month={keys[1]}"
             dirpath.mkdir(parents=True, exist_ok=True)
@@ -69,7 +69,7 @@ class KlineStore:
             raise ValueError(f"unknown period: {period}")
         if not symbols:
             return empty_klines()
-        glob = str(self.root / f"period={period}" / "**" / "*.parquet")
+        glob = str(self.root / f"period={period_dir_token(period)}" / "**" / "*.parquet")
         sql = """
             SELECT symbol, timestamp, open, high, low, close, volume, amount
             FROM read_parquet(?, hive_partitioning=true, filename=true, union_by_name=true)
@@ -93,7 +93,7 @@ class KlineStore:
             raise ValueError(f"unknown period: {period}")
         if not symbols:
             return 0
-        glob = str(self.root / f"period={period}" / "**" / "*.parquet")
+        glob = str(self.root / f"period={period_dir_token(period)}" / "**" / "*.parquet")
         sql = """
             SELECT COUNT(*) FROM (
                 SELECT symbol, timestamp

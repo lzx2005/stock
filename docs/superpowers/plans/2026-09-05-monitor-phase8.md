@@ -53,7 +53,7 @@ class MonitorStore:
 
 表结构按 spec §5（tasks: id/name/symbol/script/interval_sec/enabled/notify/buy_on/sell_on/poll_count/signal_count/last_run_at/error_count/last_error/created_at；signals: id/task_id/ts/kind/price/message）。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/test_monitor_store.py
@@ -94,9 +94,9 @@ def test_schema_idempotent(tmp_path):
     MonitorStore(tmp_path / "m.db")  # 第二次初始化不报错
 ```
 
-- [ ] **Step 2: 跑测试确认失败** — `.venv/bin/python -m pytest tests/test_monitor_store.py -v`，预期 ModuleNotFoundError。
-- [ ] **Step 3: 实现** `src/monitor/store.py`：sqlite3 连接（`check_same_thread=False`，`PRAGMA journal_mode=WAL`，`row_factory=sqlite3.Row`），`CREATE TABLE IF NOT EXISTS` 两表（spec §5 全字段），方法按上面签名逐条 SQL。`set_lamp` 校验 field 白名单。
-- [ ] **Step 4: 跑测试确认通过**。
+- [x] **Step 2: 跑测试确认失败** — `.venv/bin/python -m pytest tests/test_monitor_store.py -v`，预期 ModuleNotFoundError。
+- [x] **Step 3: 实现** `src/monitor/store.py`：sqlite3 连接（`check_same_thread=False`，`PRAGMA journal_mode=WAL`，`row_factory=sqlite3.Row`），`CREATE TABLE IF NOT EXISTS` 两表（spec §5 全字段），方法按上面签名逐条 SQL。`set_lamp` 校验 field 白名单。
+- [x] **Step 4: 跑测试确认通过**。
 
 ---
 
@@ -122,7 +122,7 @@ def send(text: str, config: dict | None = None,
     # 网络/HTTP 异常 → 返回 False（不抛）。code==200 → True。
 ```
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/test_monitor_notify.py
@@ -158,9 +158,9 @@ def test_send_network_error_swallowed():
         assert notify.send("x", config={"bark_key": "K1"}) is False
 ```
 
-- [ ] **Step 2: 跑测试确认失败**。
-- [ ] **Step 3: 实现**（stdlib urllib，逻辑同 `scripts/test_bark.py` 的 push()，加配置加载与异常吞咽）。
-- [ ] **Step 4: 跑测试确认通过**。
+- [x] **Step 2: 跑测试确认失败**。
+- [x] **Step 3: 实现**（stdlib urllib，逻辑同 `scripts/test_bark.py` 的 push()，加配置加载与异常吞咽）。
+- [x] **Step 4: 跑测试确认通过**。
 
 ---
 
@@ -189,7 +189,7 @@ def run_check(script: str, ctx) -> dict      # 校验返回：dict 且 buy/sell 
 
 实现要点：模块顶部 `import factors.factors  # noqa: F401`（显式注册）；`daily(n)` 的 start 取 `today - (n*2) 天` 后 `tail(n)`（自然日 vs 交易日冗余）；自定义 `class DataError(Exception)` 表示无当日数据。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/test_monitor_runtime.py
@@ -248,9 +248,9 @@ def test_run_check_bad_return():
         run_check('def check(ctx):\n    return {"buy": "yes"}\n', ctx())
 ```
 
-- [ ] **Step 2: 跑测试确认失败**。
-- [ ] **Step 3: 实现**（注意 fake 的 `dc.get_klines` 签名为关键字兼容即可；真实 DataCenter 用 `adjust="forward"`）。
-- [ ] **Step 4: 跑测试确认通过**。
+- [x] **Step 2: 跑测试确认失败**。
+- [x] **Step 3: 实现**（注意 fake 的 `dc.get_klines` 签名为关键字兼容即可；真实 DataCenter 用 `adjust="forward"`）。
+- [x] **Step 4: 跑测试确认通过**。
 
 ---
 
@@ -284,7 +284,7 @@ class MonitorDaemon:
     def run(self) -> None   # while True: tick(); sleep 到下一分钟边界
 ```
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/test_monitor_daemon.py
@@ -360,16 +360,16 @@ def test_tick_script_error_isolated(tmp_path, monkeypatch):
     assert t["error_count"] == 1 and "boom" in t["last_error"] and t["buy_on"] == 0
 ```
 
-- [ ] **Step 2: 跑测试确认失败**。
-- [ ] **Step 3: 实现**。到期判断 `(now - (last_run_at or 0)) >= max(60, interval_sec)*1000`；通知文案按接口注释；`run()` 用 `time.sleep(60 - time.time() % 60)` 对齐分钟边界。
-- [ ] **Step 4: 跑测试确认通过**。
+- [x] **Step 2: 跑测试确认失败**。
+- [x] **Step 3: 实现**。到期判断 `(now - (last_run_at or 0)) >= max(60, interval_sec)*1000`；通知文案按接口注释；`run()` 用 `time.sleep(60 - time.time() % 60)` 对齐分钟边界。
+- [x] **Step 4: 跑测试确认通过**。
 
 ---
 
-### Task 5: 入口脚本 `scripts/monitor.py` + `scripts/monitor_cli.py`
+### Task 5: 入口脚本 `scripts/monitor_daemon.py` + `scripts/monitor_cli.py`
 
 **Files:**
-- Create: `scripts/monitor.py`、`scripts/monitor_cli.py`
+- Create: `scripts/monitor_daemon.py`、`scripts/monitor_cli.py`
 - Test: `tests/test_monitor_cli.py`
 
 **Interfaces:**
@@ -377,7 +377,7 @@ def test_tick_script_error_isolated(tmp_path, monkeypatch):
 - Produces（CLI 供 Task 8 的 skill 调用）:
 
 ```bash
-.venv/bin/python scripts/monitor.py                      # 启动守护进程（前台）
+.venv/bin/python scripts/monitor_daemon.py                      # 启动守护进程（前台）
 .venv/bin/python scripts/monitor_cli.py register --name N --symbol S \
     [--interval 60] [--no-notify] --script-file path.py  # → 打印 task_id
 .venv/bin/python scripts/monitor_cli.py list             # 表格：id/灯/名称/symbol/interval/enabled/notify/错误
@@ -386,7 +386,7 @@ def test_tick_script_error_isolated(tmp_path, monkeypatch):
 .venv/bin/python scripts/monitor_cli.py delete <id> --yes
 ```
 
-- [ ] **Step 1: 写失败测试**（CLI 用 `tmp_path` 的 db 跑 register/list/toggle/delete 一圈；`monitor_cli.main(argv, db_path)` 支持注入 db_path 便于测试）:
+- [x] **Step 1: 写失败测试**（CLI 用 `tmp_path` 的 db 跑 register/list/toggle/delete 一圈；`monitor_cli.main(argv, db_path)` 支持注入 db_path 便于测试）:
 
 ```python
 # tests/test_monitor_cli.py
@@ -410,9 +410,9 @@ def test_cli_roundtrip(tmp_path, capsys):
     assert "600869.SH" not in capsys.readouterr().out
 ```
 
-- [ ] **Step 2: 跑测试确认失败**。
-- [ ] **Step 3: 实现**。`monitor.py`：`source ~/.zshrc` 由用户负责；构造 `DataCenter()`/`FactorStore(dc)`/`MonitorStore("data/monitor.db")`/`MonitorDaemon(...)`，打印启动横幅（任务数、Bark 配置有无）后 `daemon.run()`。`monitor_cli.py` 用 argparse 子命令，默认 `db_path="data/monitor.db"`。
-- [ ] **Step 4: 跑测试确认通过**。
+- [x] **Step 2: 跑测试确认失败**。
+- [x] **Step 3: 实现**。`monitor.py`：`source ~/.zshrc` 由用户负责；构造 `DataCenter()`/`FactorStore(dc)`/`MonitorStore("data/monitor.db")`/`MonitorDaemon(...)`，打印启动横幅（任务数、Bark 配置有无）后 `daemon.run()`。`monitor_cli.py` 用 argparse 子命令，默认 `db_path="data/monitor.db"`。
+- [x] **Step 4: 跑测试确认通过**。
 
 ---
 
@@ -436,7 +436,7 @@ def test_cli_roundtrip(tmp_path, capsys):
 | `DELETE /api/monitor/tasks/{id}` | → `{"ok": true}` |
 | `GET /api/monitor/signals?task_id=&limit=` | `{"items": [...]}` ts 倒序 |
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/test_monitor_api.py
@@ -476,9 +476,9 @@ def test_monitor_404(tmp_path):
     assert c.put("/api/monitor/tasks/99", json={"name": "x"}).status_code == 404
 ```
 
-- [ ] **Step 2: 跑测试确认失败**。
-- [ ] **Step 3: 实现**：`monitor_api.py` 建 `APIRouter(prefix="/api/monitor")`，从 `request.app.state.stores.monitor` 取 store；`app.py` 的 `AppStores.__init__` 加 `self.monitor = MonitorStore(data_dir / "monitor.db")`（import 自 `monitor.store`），`create_app` 里 `app.include_router(monitor_router)`（局部 import，同现有模式）。
-- [ ] **Step 4: 跑测试确认通过**。
+- [x] **Step 2: 跑测试确认失败**。
+- [x] **Step 3: 实现**：`monitor_api.py` 建 `APIRouter(prefix="/api/monitor")`，从 `request.app.state.stores.monitor` 取 store；`app.py` 的 `AppStores.__init__` 加 `self.monitor = MonitorStore(data_dir / "monitor.db")`（import 自 `monitor.store`），`create_app` 里 `app.include_router(monitor_router)`（局部 import，同现有模式）。
+- [x] **Step 4: 跑测试确认通过**。
 
 ---
 
@@ -492,7 +492,7 @@ def test_monitor_404(tmp_path):
 **Interfaces:**
 - Consumes: Task 6 的 6 个端点。
 
-- [ ] **Step 1: `api.ts` 加函数**
+- [x] **Step 1: `api.ts` 加函数**
 
 ```typescript
 // 追加到 frontend/src/api.ts（沿用现有 fetch 封装风格）
@@ -524,7 +524,7 @@ export const monitorSignals = (taskId?: number) =>
     .then(r => r.json()) as Promise<{ items: MonitorSignal[] }>;
 ```
 
-- [ ] **Step 2: 写 `MonitorBoard.tsx`**（antd `Table` 任务列表：买/卖灯用 `Badge status={on ? "warning" : "default"}` + 文字标签、enabled 用 `Switch`、操作列 [详情][删除]；下方 `Table` 信号历史（时间/kind 中文映射 buy_on→买入灯亮 等/price/message）；`Drawer` 详情：`Input` 名称、`InputNumber` interval（min 60）、`Switch` notify、`Input.TextArea` script（rows≥12，等宽字体）+ 保存按钮调 updateTask；顶部 [新建任务] 按钮开空 Drawer 调 createTask。挂载时 load，操作后 reload。kind 映射表：
+- [x] **Step 2: 写 `MonitorBoard.tsx`**（antd `Table` 任务列表：买/卖灯用 `Badge status={on ? "warning" : "default"}` + 文字标签、enabled 用 `Switch`、操作列 [详情][删除]；下方 `Table` 信号历史（时间/kind 中文映射 buy_on→买入灯亮 等/price/message）；`Drawer` 详情：`Input` 名称、`InputNumber` interval（min 60）、`Switch` notify、`Input.TextArea` script（rows≥12，等宽字体）+ 保存按钮调 updateTask；顶部 [新建任务] 按钮开空 Drawer 调 createTask。挂载时 load，操作后 reload。kind 映射表：
 
 ```typescript
 const KIND_LABEL: Record<string, string> = {
@@ -533,8 +533,8 @@ const KIND_LABEL: Record<string, string> = {
 };
 ```
 
-- [ ] **Step 3: `App.tsx` 加 tab**：TABS 数组加 `{ key: "monitor", label: "盯盘" }`，content 区加第三个 display 切换 div 挂 `<MonitorBoard />`。
-- [ ] **Step 4: `cd frontend && npm run build` 通过**（TS 无错）。人工冒烟留到 Task 9。
+- [x] **Step 3: `App.tsx` 加 tab**：TABS 数组加 `{ key: "monitor", label: "盯盘" }`，content 区加第三个 display 切换 div 挂 `<MonitorBoard />`。
+- [x] **Step 4: `cd frontend && npm run build` 通过**（TS 无错）。人工冒烟留到 Task 9。
 
 ---
 
@@ -563,7 +563,7 @@ def replay_daily(script: str, symbol: str, dc, fs, days: int = 750) -> list[int]
     """逐日评估 check，返回触发（buy 或 sell 为 True）的日期 ms 列表。"""
 ```
 
-- [ ] **Step 1: 写失败测试**（fake dc/fs 喂 5 天数据，条件 `close > 10` 应触发其中已知天数）:
+- [x] **Step 1: 写失败测试**（fake dc/fs 喂 5 天数据，条件 `close > 10` 应触发其中已知天数）:
 
 ```python
 # tests/test_validate_watch.py
@@ -584,10 +584,10 @@ def test_replay_daily_counts_triggers():
     assert len(hits) == 3
 ```
 
-- [ ] **Step 2: 跑测试确认失败**。
-- [ ] **Step 3: 实现 `validate_watch.py`**（compile 检查 → 真实/注入 dc 干跑 → replay_daily 打印次数与最近 3 次日期）。**注意**：回放里 `daily(n)` 需按"截至当日"切片，在 replay 内部构造轻量 ctx（可直接复用 `MonitorContext` 加可选 `asof_ms` 参数——Task 3 的 `MonitorContext.__init__(self, dc, fs, symbol, asof_ms=None)`，asof 存在时所有取数窗口右端=asof。Task 3 实现时带上这个参数，测试不变）。
-- [ ] **Step 4: 跑测试确认通过**。
-- [ ] **Step 5: 写 `.claude/skills/monitor-expert/SKILL.md`**，章节固定为：
+- [x] **Step 2: 跑测试确认失败**。
+- [x] **Step 3: 实现 `validate_watch.py`**（compile 检查 → 真实/注入 dc 干跑 → replay_daily 打印次数与最近 3 次日期）。**注意**：回放里 `daily(n)` 需按"截至当日"切片，在 replay 内部构造轻量 ctx（可直接复用 `MonitorContext` 加可选 `asof_ms` 参数——Task 3 的 `MonitorContext.__init__(self, dc, fs, symbol, asof_ms=None)`，asof 存在时所有取数窗口右端=asof。Task 3 实现时带上这个参数，测试不变）。
+- [x] **Step 4: 跑测试确认通过**。
+- [x] **Step 5: 写 `.claude/skills/monitor-expert/SKILL.md`**，章节固定为：
   1. **职责**：自然语言 → check(ctx) 脚本 → 验证 → 注册/启停/诊断（spec §13 四件事）
   2. **边界**：只生成/注册脚本不改盯盘系统；拒绝任何下单/交易动作请求；纯提醒
   3. **工作流程**：澄清口径（给默认并写明）→ 生成脚本 → `validate_watch.py` 三段验证（回放触发次数给用户判断松紧）→ `monitor_cli.py register` → 告知 task_id 与灯语义
@@ -601,10 +601,10 @@ def test_replay_daily_counts_triggers():
 
 ### Task 9: 收尾 — 全量测试 + HELP.md + 冒烟指引
 
-- [ ] **Step 1: 全量测试** `.venv/bin/python -m pytest tests/`，预期 200 + 本期新增 ≈ **215± 全绿**；失败则修复。
-- [ ] **Step 2: 更新 HELP.md**：§4 八期行改为实现完成（模块清单/测试数）；§5 代码结构加 `src/monitor/`（store/runtime/notify/daemon 四行说明）与 `.claude/skills/monitor-expert/`；§9 常用命令加 `scripts/monitor.py`、`scripts/monitor_cli.py` 五个子命令、`scripts/validate_watch.py`。
-- [ ] **Step 3: 前端生产构建** `cd frontend && npm run build`。
-- [ ] **Step 4: 真实冒烟（人工，需交易时段）**：`source ~/.zshrc && .venv/bin/python scripts/monitor.py` 跑 10 分钟；用 monitor_cli 注册一个「现价 > 0」必亮灯任务，确认：灯亮 → 手机收到 Bark → 页面可见 → 信号历史有条目。非交易时段则用 `validate_watch.py` 干跑代替。
+- [x] **Step 1: 全量测试** `.venv/bin/python -m pytest tests/`，预期 200 + 本期新增 ≈ **215± 全绿**；失败则修复。
+- [x] **Step 2: 更新 HELP.md**：§4 八期行改为实现完成（模块清单/测试数）；§5 代码结构加 `src/monitor/`（store/runtime/notify/daemon 四行说明）与 `.claude/skills/monitor-expert/`；§9 常用命令加 `scripts/monitor_daemon.py`、`scripts/monitor_cli.py` 五个子命令、`scripts/validate_watch.py`。
+- [x] **Step 3: 前端生产构建** `cd frontend && npm run build`。
+- [ ] **Step 4: 真实冒烟（人工，需交易时段）**：`source ~/.zshrc && .venv/bin/python scripts/monitor_daemon.py` 跑 10 分钟；用 monitor_cli 注册一个「现价 > 0」必亮灯任务，确认：灯亮 → 手机收到 Bark → 页面可见 → 信号历史有条目。非交易时段则用 `validate_watch.py` 干跑代替。
 - [ ] **Step 5: 勾掉本计划全部 checkbox**（Commit 步无）。
 
 ---
