@@ -11,6 +11,10 @@
 
 数据源为 [TickFlow](https://tickflow.org)（付费 API，官方 SDK）。
 
+## 系统架构
+
+![系统架构图](images/architecture.png)
+
 ---
 
 ## 解决什么问题

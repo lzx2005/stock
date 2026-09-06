@@ -99,13 +99,15 @@ Skill 体系（用户与本项目的主要交互方式，均随仓库入库）�
 ## 6. 文档结构
 
 ```
-README.md                    # 给人读：功能/上手/技术架构
+README.md                    # 给人读：功能/上手/技术架构（顶部含系统架构图）
 HELP.md                      # 给 AI 读：本文件（入口总目录）
 CLAUDE.md                    # 工作规则（每个 AI 先读的强制性规则，含"先读 HELP.md"）
+images/
+└── architecture.png         # 系统架构图（README 顶部引用；由 docs/architecture-diagram.md 文字描述生成）
+animation-plans/             # 旧前端的动画审计计划存档（improve-animations 产出，001~006 全部 DONE；前端已迁出，仅作历史记录）
 docs/
 ├── architecture-diagram.md  # 架构图文字描述（分层/组件/四条数据流/约束，供画图 AI 生成架构图）
 ├── FRONTEND.md              # 前端功能文档：页面/按钮/交互逻辑 + §5 全量 API 参考（§5.0 跨工程接入代理说明；请求参数/返回字段/错误码 + §7 变更记录；只管功能，视觉由设计 AI 自定；改前端必同步）
-animation-plans/             # 旧前端的动画审计计划存档（improve-animations 产出，001~006 全部 DONE；前端已迁出，仅作历史记录）
 ├── sdk-notes.md             # TickFlow SDK 实测：限流/异常/字段/权限（含 NO_WS_PERMISSION 记录）
 ├── openapi.json             # SDK 接口原始快照
 └── superpowers/
